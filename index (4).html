@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FinanceFlow — Business Dashboard</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Our stylesheet -->
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════
+       SIDEBAR NAVIGATION
+  ═══════════════════════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- Brand Logo -->
+    <div class="sidebar-brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+          <polyline points="16 7 22 7 22 13"></polyline>
+        </svg>
+      </div>
+      <span class="brand-name">FinanceFlow</span>
+    </div>
+
+    <!-- Navigation Links -->
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item" data-page="dashboard">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+        </svg>
+        <span>Dashboard</span>
+      </a>
+      <a href="#" class="nav-item active" data-page="finance">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="1" x2="12" y2="23"></line>
+          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+        </svg>
+        <span>Finance</span>
+      </a>
+      <a href="#" class="nav-item" data-page="clients">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <span>Clients</span>
+      </a>
+      <a href="#" class="nav-item" data-page="reports">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        <span>Reports</span>
+      </a>
+      <a href="#" class="nav-item" data-page="settings">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>Settings</span>
+      </a>
+    </nav>
+
+    <!-- Sidebar Footer -->
+    <div class="sidebar-footer">
+      <div class="user-avatar">B</div>
+      <div class="user-info">
+        <span class="user-name">Business Owner</span>
+        <span class="user-role">Admin</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════
+       MAIN CONTENT AREA
+  ═══════════════════════════════════════════ -->
+  <main class="main-content">
+
+    <!-- Top Header Bar -->
+    <header class="topbar">
+      <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+      <div class="topbar-title">
+        <h1 id="pageTitle">Finance Dashboard</h1>
+        <span id="pageSubtitle">Track your revenue, expenses & profit</span>
+      </div>
+      <div class="topbar-right">
+        <span class="current-date" id="currentDate"></span>
+        <button class="btn-export" id="exportBtn" title="Clear all data">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6l-1 14H6L5 6"></path>
+            <path d="M10 11v6M14 11v6"></path>
+          </svg>
+          Clear Data
+        </button>
+      </div>
+    </header>
+
+    <!-- ══════════════ PAGE: FINANCE (default) ══════════════ -->
+    <div id="page-finance" class="page active">
+
+      <!-- ── SECTION 1: Summary Cards ── -->
+      <section class="summary-cards">
+        <div class="card stat-card" id="card-revenue">
+          <div class="stat-icon revenue-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="1" x2="12" y2="23"></line>
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+            </svg>
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">Total Revenue</span>
+            <span class="stat-value" id="totalRevenue">₹0</span>
+            <span class="stat-sub" id="revenueChange">+0% this month</span>
+          </div>
+          <div class="stat-sparkline"></div>
+        </div>
+
+        <div class="card stat-card" id="card-expenses">
+          <div class="stat-icon expense-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+            </svg>
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">Total Expenses</span>
+            <span class="stat-value" id="totalExpenses">₹0</span>
+            <span class="stat-sub" id="expensesChange">₹0 average/client</span>
+          </div>
+        </div>
+
+        <div class="card stat-card" id="card-profit">
+          <div class="stat-icon profit-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+              <polyline points="16 7 22 7 22 13"></polyline>
+            </svg>
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">Net Profit</span>
+            <span class="stat-value" id="netProfit">₹0</span>
+            <span class="stat-sub" id="profitMargin">0% profit margin</span>
+          </div>
+        </div>
+
+        <div class="card stat-card" id="card-clients">
+          <div class="stat-icon clients-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">Total Clients</span>
+            <span class="stat-value" id="totalClients">0</span>
+            <span class="stat-sub" id="clientsActive">0 active projects</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── SECTION 2: Add Payment Form ── -->
+      <section class="card form-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="16"></line>
+              <line x1="8" y1="12" x2="16" y2="12"></line>
+            </svg>
+            Add Client Payment
+          </h2>
+          <span class="section-badge">New Entry</span>
+        </div>
+
+        <div class="form-grid" id="paymentForm">
+          <div class="form-group">
+            <label for="clientName">Client Name</label>
+            <input type="text" id="clientName" placeholder="e.g. ABC Company" autocomplete="off"/>
+          </div>
+          <div class="form-group">
+            <label for="projectName">Project / Service</label>
+            <input type="text" id="projectName" placeholder="e.g. Website Development" autocomplete="off"/>
+          </div>
+          <div class="form-group">
+            <label for="paymentAmount">Payment Received (₹)</label>
+            <input type="number" id="paymentAmount" placeholder="e.g. 50000" min="0"/>
+          </div>
+          <div class="form-group">
+            <label for="expenseAmount">Expense Made (₹)</label>
+            <input type="number" id="expenseAmount" placeholder="e.g. 30000" min="0"/>
+          </div>
+          <div class="form-group form-actions">
+            <button class="btn-primary" id="addPaymentBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Add Payment
+            </button>
+          </div>
+        </div>
+
+        <!-- Inline feedback message -->
+        <div class="form-toast" id="formToast"></div>
+      </section>
+
+      <!-- ── SECTION 3: Client Wise Profit Analysis ── -->
+      <section class="analysis-section">
+        <div class="card analysis-card" id="bestClientCard">
+          <div class="analysis-label">
+            <span class="trophy-icon">🏆</span> Most Profitable Client
+          </div>
+          <div class="analysis-client" id="bestClientName">—</div>
+          <div class="analysis-amount profit-text" id="bestClientProfit">₹0 Profit</div>
+          <div class="analysis-meta" id="bestClientMeta">No data yet</div>
+        </div>
+
+        <div class="card analysis-card" id="worstClientCard">
+          <div class="analysis-label">
+            <span class="trophy-icon">⚠️</span> Highest Loss Client
+          </div>
+          <div class="analysis-client" id="worstClientName">—</div>
+          <div class="analysis-amount loss-text" id="worstClientLoss">₹0 Loss</div>
+          <div class="analysis-meta" id="worstClientMeta">No data yet</div>
+        </div>
+
+        <div class="card analysis-card" id="monthlyCard">
+          <div class="analysis-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            Monthly Filter
+          </div>
+          <div class="month-select-wrap">
+            <select id="monthFilter" class="month-select">
+              <!-- Populated by JS -->
+            </select>
+          </div>
+          <div class="monthly-stats">
+            <div class="monthly-row">
+              <span>Revenue</span>
+              <span id="monthRevenue" class="profit-text">₹0</span>
+            </div>
+            <div class="monthly-row">
+              <span>Expenses</span>
+              <span id="monthExpenses" class="loss-text">₹0</span>
+            </div>
+            <div class="monthly-row monthly-row-total">
+              <span>Net Profit</span>
+              <span id="monthProfit">₹0</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── SECTION 4: Analytics Chart ── -->
+      <section class="card chart-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            Financial Trends
+          </h2>
+          <div class="chart-legend">
+            <span class="legend-dot revenue-dot"></span> Revenue
+            <span class="legend-dot expense-dot"></span> Expenses
+            <span class="legend-dot profit-dot"></span> Profit
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="financialChart"></canvas>
+        </div>
+        <div class="chart-empty" id="chartEmpty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <p>Add transactions to see your financial trends</p>
+        </div>
+      </section>
+
+      <!-- ── SECTION 5: Transaction Table ── -->
+      <section class="card table-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 11l3 3L22 4"></path>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            Client Transactions
+          </h2>
+          <div class="table-controls">
+            <input type="text" id="searchInput" class="search-input" placeholder="Search clients..."/>
+            <div class="filter-tabs">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="profit">Profit</button>
+              <button class="filter-btn" data-filter="loss">Loss</button>
+            </div>
+            <button class="btn-sort" id="sortBtn" title="Sort by highest profit">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <polyline points="19 12 12 19 5 12"></polyline>
+              </svg>
+              Sort
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="transactions-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Client</th>
+                <th>Project</th>
+                <th>Paid (₹)</th>
+                <th>Expense (₹)</th>
+                <th>Profit / Loss</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="transactionBody">
+              <!-- Rows injected by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty state -->
+        <div class="table-empty" id="tableEmpty">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+          <p>No transactions yet. Add your first client payment above.</p>
+        </div>
+      </section>
+
+    </div><!-- /page-finance -->
+
+    <!-- ══════════════ PAGE: DASHBOARD ══════════════ -->
+    <div id="page-dashboard" class="page">
+      <div class="placeholder-page">
+        <div class="placeholder-icon">📊</div>
+        <h2>Overview Dashboard</h2>
+        <p>Quick overview metrics would appear here in a full build.<br/>Navigate to <strong>Finance</strong> to manage your transactions.</p>
+      </div>
+    </div>
+
+    <!-- ══════════════ PAGE: CLIENTS ══════════════ -->
+    <div id="page-clients" class="page">
+      <div class="placeholder-page">
+        <div class="placeholder-icon">👥</div>
+        <h2>Client Management</h2>
+        <p>Full CRM and client profiles would appear here.<br/>Navigate to <strong>Finance</strong> to see client transactions.</p>
+      </div>
+    </div>
+
+    <!-- ══════════════ PAGE: REPORTS ══════════════ -->
+    <div id="page-reports" class="page">
+      <div class="placeholder-page">
+        <div class="placeholder-icon">📑</div>
+        <h2>Reports &amp; Export</h2>
+        <p>PDF and Excel export options will appear here.<br/>(Ready for Firebase integration)</p>
+      </div>
+    </div>
+
+    <!-- ══════════════ PAGE: SETTINGS ══════════════ -->
+    <div id="page-settings" class="page">
+      <div class="placeholder-page">
+        <div class="placeholder-icon">⚙️</div>
+        <h2>Settings</h2>
+        <p>Business profile, currency, notifications, and user management will be here.<br/>(Ready for multi-user / Firebase auth)</p>
+      </div>
+    </div>
+
+  </main><!-- /main-content -->
+
+  <!-- Our script — loaded last so DOM is ready -->
+  <script src="script.js"></script>
+</body>
+</html>
