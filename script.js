@@ -1,332 +1,417 @@
 /* ═══════════════════════════════════════════════════════════════
-   FinanceFlow — script.js
-   Complete Finance Dashboard Logic
-   
-   Architecture is Firebase-ready:
-   - All data operations go through DataStore (swap for Firebase later)
-   - UI rendering is decoupled from storage
-   - Each section has its own render function
-   
-   Sections:
-   1.  DataStore         — LocalStorage CRUD (swap for Firebase here)
-   2.  Utility helpers   — formatting, dates, IDs
-   3.  App state         — runtime state (filter, sort, search)
-   4.  Summary cards     — render top 4 KPI cards
-   5.  Form              — add payment form logic
-   6.  Table             — client transaction table
-   7.  Analysis cards    — best/worst client, monthly filter
-   8.  Chart             — Chart.js line graph
-   9.  Navigation        — sidebar + mobile menu
-   10. Initialisation    — boot sequence
-   ═══════════════════════════════════════════════════════════════ */
+   FinanceFlow — script.js  (v2)
+
+   NEW in v2:
+   - Common Expenses store (electricity, rent, subscriptions etc.)
+   - Period filters: This Month / Last 3 Months / This Year / All Time
+   - Client filter: per-client OR overall view
+   - Net Profit = Revenue - Direct Client Expense - Common Expenses (period)
+   - Common expenses split equally across active clients in that period
+   - Line graph respects both period + client filters
+   - Per-client monthly P&L table
+
+   Firebase upgrade: swap DataStore.* methods with Firestore calls.
+═══════════════════════════════════════════════════════════════ */
 
 
-/* ─────────────────────────────────────────────────────────────
-   1. DATA STORE
-   LocalStorage wrapper.  To switch to Firebase later, only edit
-   this section — the rest of the app calls these functions.
-───────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   1. DATA STORE  (LocalStorage — swap for Firebase here)
+───────────────────────────────────────────── */
 const DataStore = (() => {
-  const KEY = 'financeflow_transactions'; // LocalStorage key
+  const TX_KEY  = 'ff_transactions';  // client payments
+  const COM_KEY = 'ff_common_exp';    // common expenses
 
-  /** Return all transactions as an array */
-  function getAll() {
-    try {
-      return JSON.parse(localStorage.getItem(KEY)) || [];
-    } catch {
-      return [];
-    }
-  }
+  /* ── Transactions ── */
+  function getAll()    { try { return JSON.parse(localStorage.getItem(TX_KEY))  || []; } catch { return []; } }
+  function saveAll(d)  { localStorage.setItem(TX_KEY,  JSON.stringify(d)); }
 
-  /** Save an array of transactions back to LocalStorage */
-  function saveAll(transactions) {
-    localStorage.setItem(KEY, JSON.stringify(transactions));
-  }
-
-  /** Add one new transaction object, return it with a generated id */
-  function add(entry) {
-    const transactions = getAll();
-    const newEntry = {
-      id:        generateId(),
-      client:    entry.client.trim(),
-      project:   entry.project.trim(),
-      payment:   Number(entry.payment),
-      expense:   Number(entry.expense),
-      profit:    Number(entry.payment) - Number(entry.expense),
-      date:      entry.date || todayISO(),
+  function addTx(e) {
+    const list = getAll();
+    const rec  = {
+      id:        uid(),
+      client:    e.client.trim(),
+      project:   e.project.trim(),
+      payment:   +e.payment,
+      expense:   +e.expense,
+      profit:    +e.payment - +e.expense,   // direct profit (before common)
+      date:      e.date || isoToday(),
       createdAt: Date.now(),
     };
-    transactions.push(newEntry);
-    saveAll(transactions);
-    return newEntry;
+    list.push(rec);
+    saveAll(list);
+    return rec;
   }
 
-  /** Delete a transaction by id */
-  function remove(id) {
-    const updated = getAll().filter(t => t.id !== id);
-    saveAll(updated);
+  function removeTx(id) { saveAll(getAll().filter(t => t.id !== id)); }
+
+  /* ── Common Expenses ── */
+  function getCommon()       { try { return JSON.parse(localStorage.getItem(COM_KEY)) || []; } catch { return []; } }
+  function saveCommon(d)     { localStorage.setItem(COM_KEY, JSON.stringify(d)); }
+
+  function addCommon(e) {
+    const list = getCommon();
+    const rec  = {
+      id:        uid(),
+      name:      e.name.trim(),
+      category:  e.category,
+      amount:    +e.amount,
+      month:     e.month,   // 'YYYY-MM'
+      createdAt: Date.now(),
+    };
+    list.push(rec);
+    saveCommon(list);
+    return rec;
   }
 
-  /** Wipe everything — used by the Clear Data button */
+  function removeCommon(id) { saveCommon(getCommon().filter(c => c.id !== id)); }
+
   function clearAll() {
-    localStorage.removeItem(KEY);
+    localStorage.removeItem(TX_KEY);
+    localStorage.removeItem(COM_KEY);
   }
 
-  return { getAll, add, remove, clearAll };
+  return { getAll, addTx, removeTx, getCommon, addCommon, removeCommon, clearAll };
 })();
 
 
-/* ─────────────────────────────────────────────────────────────
-   2. UTILITY HELPERS
-───────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   2. UTILITIES
+───────────────────────────────────────────── */
+function uid()      { return '_' + Math.random().toString(36).slice(2,10); }
+function isoToday() { return new Date().toISOString().slice(0,10); }
 
-/** Create a short unique id  */
-function generateId() {
-  return '_' + Math.random().toString(36).slice(2, 10);
+function inr(n) {
+  const abs = Math.abs(n);
+  return '₹' + abs.toLocaleString('en-IN');
 }
 
-/** Today as YYYY-MM-DD  */
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/** Format a number as Indian Rupee string: ₹1,00,000  */
-function formatINR(amount) {
-  const abs = Math.abs(amount);
-  const formatted = abs.toLocaleString('en-IN');
-  return '₹' + formatted;
-}
-
-/** Format ISO date string to "15 Jan 2025" */
-function formatDate(iso) {
+function fmtDate(iso) {
   if (!iso) return '—';
-  const [y, m, d] = iso.split('-');
-  const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                   'Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${parseInt(d)} ${months[parseInt(m) - 1]} ${y}`;
+  const [y,m,d] = iso.split('-');
+  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${+d} ${mo[+m-1]} ${y}`;
 }
 
-/** Return "June 2025" label for an ISO date string */
-function monthLabel(iso) {
-  if (!iso) return '';
-  const [y, m] = iso.split('-');
-  const months = ['January','February','March','April','May','June',
-                  'July','August','September','October','November','December'];
-  return `${months[parseInt(m) - 1]} ${y}`;
+function bucket(iso)  { return iso ? iso.slice(0,7) : ''; }  // 'YYYY-MM'
+
+function monthLabel(yyyymm) {
+  if (!yyyymm) return '';
+  const [y,m] = yyyymm.split('-');
+  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${mo[+m-1]} ${y}`;
 }
 
-/** Return "YYYY-MM" bucket for an ISO date string */
-function monthBucket(iso) {
-  return iso ? iso.slice(0, 7) : '';
-}
+function initial(name) { return name ? name.trim()[0].toUpperCase() : '?'; }
 
-/** Get the first initial of a name for the avatar badge  */
-function initial(name) {
-  return name ? name.trim()[0].toUpperCase() : '?';
-}
-
-/** Animate a numeric value ticking up in an element  */
-function animateCounter(el, target, prefix = '₹', duration = 700) {
-  const start = 0;
-  const startTime = performance.now();
-  const isNeg = target < 0;
-  const absTarget = Math.abs(target);
-
-  function step(now) {
-    const elapsed = now - startTime;
-    const progress = Math.min(elapsed / duration, 1);
-    // Ease-out cubic
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const current = Math.round(eased * absTarget);
-    el.textContent = (isNeg ? '-' : '') + prefix + current.toLocaleString('en-IN');
-    if (progress < 1) requestAnimationFrame(step);
-  }
+function animCount(el, val, pre='₹', dur=700) {
+  const abs = Math.abs(val); const neg = val < 0; const t0 = performance.now();
+  const step = now => {
+    const p = Math.min((now-t0)/dur, 1);
+    const e = 1 - Math.pow(1-p, 3);
+    el.textContent = (neg?'-':'') + pre + Math.round(e*abs).toLocaleString('en-IN');
+    if (p < 1) requestAnimationFrame(step);
+  };
   requestAnimationFrame(step);
 }
 
-/** Show a brief toast message inside the form  */
-function showToast(message, type = 'success') {
-  const toast = document.getElementById('formToast');
-  toast.textContent = message;
-  toast.className = `form-toast show ${type}`;
-  setTimeout(() => { toast.className = 'form-toast'; }, 3000);
+function setText(id, txt) { const el=document.getElementById(id); if(el) el.textContent=txt; }
+
+function toast(id, msg, type='success') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `form-toast show ${type}`;
+  setTimeout(() => el.className = 'form-toast', 3000);
 }
 
 
-/* ─────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────
    3. APP STATE
-   Holds runtime filter/search/sort choices (not persisted).
-───────────────────────────────────────────────────────────── */
+───────────────────────────────────────────── */
 const State = {
-  filter:       'all',   // 'all' | 'profit' | 'loss'
-  sortByProfit: false,   // true = sort descending by profit
-  search:       '',      // current search string
-  selectedMonth: '',     // 'YYYY-MM' or '' for all time
+  period:       'month',   // 'month' | '3months' | 'year' | 'all'
+  clientFilter: 'all',     // 'all' or client name (lowercase)
+  tableFilter:  'all',     // 'all' | 'profit' | 'loss'
+  sortByProfit: false,
+  search:       '',
 };
 
 
-/* ─────────────────────────────────────────────────────────────
-   4. SUMMARY CARDS
-───────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   4. PERIOD HELPERS
+   Returns { start, end } ISO date strings for
+   the selected period, used to filter records.
+───────────────────────────────────────────── */
+function getPeriodRange() {
+  const now   = new Date();
+  const today = isoToday();
+
+  if (State.period === 'month') {
+    const start = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+    return { start, end: today };
+  }
+  if (State.period === '3months') {
+    const d = new Date(now); d.setMonth(d.getMonth() - 2); d.setDate(1);
+    return { start: d.toISOString().slice(0,10), end: today };
+  }
+  if (State.period === 'year') {
+    return { start: `${now.getFullYear()}-01-01`, end: today };
+  }
+  // all — use very wide range
+  return { start: '2000-01-01', end: '2099-12-31' };
+}
+
+function inRange(iso, range) {
+  return iso >= range.start && iso <= range.end;
+}
+
+/** Label for the current period */
+function periodLabel() {
+  const now = new Date();
+  if (State.period === 'month')   return new Date().toLocaleString('en-IN',{month:'long',year:'numeric'});
+  if (State.period === '3months') return 'Last 3 Months';
+  if (State.period === 'year')    return `Year ${now.getFullYear()}`;
+  return 'All Time';
+}
+
+
+/* ─────────────────────────────────────────────
+   5. CORE CALCULATION ENGINE
+   For a given set of transactions + common expenses
+   and an optional client filter, returns aggregated
+   financial data.
+───────────────────────────────────────────── */
+function calcStats(txList, commonList, clientName = 'all') {
+  /*
+    Common expense allocation:
+    - Find how many unique clients had activity in the period
+    - Split common expenses equally among them
+    - Each client's share = totalCommon / activeClients
+    - If viewing one client: their share = totalCommon / activeClients
+    - If viewing all: full common total is shown
+  */
+
+  // Count unique active clients in period (from full txList, not filtered by client)
+  const allActiveClients = new Set(txList.map(t => t.client.toLowerCase())).size || 1;
+  const totalCommon      = commonList.reduce((s,c) => s + c.amount, 0);
+  const commonPerClient  = totalCommon / allActiveClients;
+
+  // Now filter by client if needed
+  const filtered = clientName === 'all'
+    ? txList
+    : txList.filter(t => t.client.toLowerCase() === clientName);
+
+  const revenue    = filtered.reduce((s,t) => s + t.payment, 0);
+  const directExp  = filtered.reduce((s,t) => s + t.expense, 0);
+
+  // Common share depends on view
+  let commonShare;
+  if (clientName === 'all') {
+    commonShare = totalCommon;
+  } else {
+    commonShare = commonPerClient;  // one client's proportional share
+  }
+
+  const netProfit  = revenue - directExp - commonShare;
+  const uniqueCl   = new Set(filtered.map(t => t.client.toLowerCase())).size;
+
+  return { revenue, directExp, commonShare, netProfit, uniqueCl, count: filtered.length };
+}
+
+
+/* ─────────────────────────────────────────────
+   6. SUMMARY CARDS (all-time, always)
+───────────────────────────────────────────── */
 function renderSummaryCards() {
-  const transactions = DataStore.getAll();
+  const tx  = DataStore.getAll();
+  const com = DataStore.getCommon();
 
-  const totalRevenue  = transactions.reduce((s, t) => s + t.payment, 0);
-  const totalExpenses = transactions.reduce((s, t) => s + t.expense, 0);
-  const netProfit     = totalRevenue - totalExpenses;
-  // Count unique clients by name (case-insensitive)
-  const uniqueClients = new Set(
-    transactions.map(t => t.client.toLowerCase())
-  ).size;
+  const revenue   = tx.reduce((s,t) => s+t.payment, 0);
+  const directExp = tx.reduce((s,t) => s+t.expense, 0);
+  const commonExp = com.reduce((s,c) => s+c.amount, 0);
+  const net       = revenue - directExp - commonExp;
+  const clients   = new Set(tx.map(t=>t.client.toLowerCase())).size;
 
-  // Helper to update one card's value with counter animation
-  function updateCard(id, value, prefix = '₹') {
+  function upd(id, val, pre='₹') {
     const el = document.getElementById(id);
     if (!el) return;
-    // Trigger pop animation
-    el.classList.remove('pop');
-    void el.offsetWidth; // reflow
-    el.classList.add('pop');
-    animateCounter(el, value, prefix, 800);
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    animCount(el, val, pre, 700);
   }
+  upd('totalRevenue',  revenue);
+  upd('totalExpenses', directExp);
+  upd('totalCommon',   commonExp);
+  upd('netProfit',     net);
+  upd('totalClients',  clients, '');
 
-  updateCard('totalRevenue',  totalRevenue);
-  updateCard('totalExpenses', totalExpenses);
-  updateCard('netProfit',     netProfit);
+  // Colour net profit
+  const npEl = document.getElementById('netProfit');
+  if (npEl) npEl.style.color = net < 0 ? 'var(--col-loss)' : net > 0 ? 'var(--col-profit)' : '';
 
-  // Clients card uses a plain number with no ₹ prefix
-  const clientEl = document.getElementById('totalClients');
-  if (clientEl) {
-    clientEl.classList.remove('pop');
-    void clientEl.offsetWidth;
-    clientEl.classList.add('pop');
-    animateCounter(clientEl, uniqueClients, '', 600);
-  }
-
-  // Colour net profit red if negative
-  const profitEl = document.getElementById('netProfit');
-  if (profitEl) {
-    profitEl.style.color = netProfit < 0
-      ? 'var(--col-loss)'
-      : netProfit > 0 ? 'var(--col-profit)' : '';
-  }
-
-  // Sub-labels
-  const avgExpense = uniqueClients > 0
-    ? Math.round(totalExpenses / uniqueClients) : 0;
-
-  const margin = totalRevenue > 0
-    ? Math.round((netProfit / totalRevenue) * 100) : 0;
-
-  const thisMonthBucket = todayISO().slice(0, 7);
-  const thisMonthRev = transactions
-    .filter(t => monthBucket(t.date) === thisMonthBucket)
-    .reduce((s, t) => s + t.payment, 0);
-  const pct = totalRevenue > 0
-    ? Math.round((thisMonthRev / totalRevenue) * 100) : 0;
-
-  setText('revenueChange',  `${pct}% revenue this month`);
-  setText('expensesChange', `${formatINR(avgExpense)} avg / client`);
-  setText('profitMargin',   `${margin}% profit margin`);
-  setText('clientsActive',  `${transactions.length} total entries`);
-}
-
-/** Shorthand — set textContent if element exists  */
-function setText(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
+  // Common expenses log total badge
+  setText('commonExpTotal', `${inr(commonExp)} total`);
 }
 
 
-/* ─────────────────────────────────────────────────────────────
-   5. ADD PAYMENT FORM
-───────────────────────────────────────────────────────────── */
-function initForm() {
-  const btn = document.getElementById('addPaymentBtn');
-  if (!btn) return;
+/* ─────────────────────────────────────────────
+   7. PERIOD SUMMARY CARDS (responds to filters)
+───────────────────────────────────────────── */
+function renderPeriodCards() {
+  const range = getPeriodRange();
+  const tx    = DataStore.getAll().filter(t => inRange(t.date, range));
+  const com   = DataStore.getCommon().filter(c => inRange(c.month+'-01', range));
+  const stats = calcStats(tx, com, State.clientFilter);
 
-  btn.addEventListener('click', () => {
+  const pRev = document.getElementById('pRevenue');
+  const pDir = document.getElementById('pDirectExp');
+  const pCom = document.getElementById('pCommonExp');
+  const pNet = document.getElementById('pNetProfit');
+
+  if (pRev) animCount(pRev, stats.revenue);
+  if (pDir) animCount(pDir, stats.directExp);
+  if (pCom) animCount(pCom, stats.commonShare);
+  if (pNet) {
+    animCount(pNet, stats.netProfit);
+    pNet.style.color = stats.netProfit < 0 ? 'var(--col-loss)' : stats.netProfit > 0 ? 'var(--col-profit)' : '';
+  }
+
+  const lbl = periodLabel();
+  const who = State.clientFilter === 'all' ? 'All clients' : State.clientFilter;
+  setText('pRevenueLabel',  `${who} · ${lbl}`);
+  setText('pDirectLabel',   `Direct expenses · ${lbl}`);
+  setText('pCommonLabel',   State.clientFilter === 'all' ? `All common costs · ${lbl}` : `Proportional share · ${lbl}`);
+  setText('pProfitLabel',   `Revenue - Direct - Common · ${lbl}`);
+  setText('clientTablePeriodTag', lbl);
+}
+
+
+/* ─────────────────────────────────────────────
+   8. ADD PAYMENT FORM
+───────────────────────────────────────────── */
+function initClientForm() {
+  document.getElementById('addPaymentBtn')?.addEventListener('click', () => {
     const client  = document.getElementById('clientName').value.trim();
     const project = document.getElementById('projectName').value.trim();
     const payment = parseFloat(document.getElementById('paymentAmount').value);
     const expense = parseFloat(document.getElementById('expenseAmount').value);
 
-    // ── Validation ──
-    if (!client) {
-      showToast('Please enter a client name.', 'error'); return;
-    }
-    if (!project) {
-      showToast('Please enter a project / service name.', 'error'); return;
-    }
-    if (isNaN(payment) || payment < 0) {
-      showToast('Enter a valid payment amount.', 'error'); return;
-    }
-    if (isNaN(expense) || expense < 0) {
-      showToast('Enter a valid expense amount.', 'error'); return;
-    }
+    if (!client)              { toast('clientToast','Enter client name.','error'); return; }
+    if (!project)             { toast('clientToast','Enter project name.','error'); return; }
+    if (isNaN(payment)||payment<0) { toast('clientToast','Enter valid payment.','error'); return; }
+    if (isNaN(expense)||expense<0) { toast('clientToast','Enter valid expense.','error'); return; }
 
-    // ── Save ──
-    DataStore.add({ client, project, payment, expense });
+    DataStore.addTx({ client, project, payment, expense });
 
-    // ── Clear form ──
     document.getElementById('clientName').value    = '';
     document.getElementById('projectName').value   = '';
     document.getElementById('paymentAmount').value = '';
     document.getElementById('expenseAmount').value = '';
 
-    const profit = payment - expense;
-    const msg = profit >= 0
-      ? `✓ Added! Profit: ${formatINR(profit)}`
-      : `✓ Added! Loss: ${formatINR(Math.abs(profit))}`;
-    showToast(msg, profit >= 0 ? 'success' : 'error');
-
-    // ── Re-render everything ──
+    const p = payment - expense;
+    toast('clientToast', p>=0 ? `✓ Added! Direct profit: ${inr(p)}` : `✓ Added! Direct loss: ${inr(Math.abs(p))}`, p>=0?'success':'error');
     renderAll();
   });
-
-  // Allow pressing Enter in the last field
-  document.getElementById('expenseAmount')
-    ?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') btn.click();
-    });
 }
 
 
-/* ─────────────────────────────────────────────────────────────
-   6. TRANSACTION TABLE
-───────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   9. COMMON EXPENSE FORM
+───────────────────────────────────────────── */
+function initCommonForm() {
+  // Default month to current
+  const mi = document.getElementById('commonMonth');
+  if (mi) mi.value = isoToday().slice(0,7);
+
+  document.getElementById('addCommonBtn')?.addEventListener('click', () => {
+    const name     = document.getElementById('commonName').value.trim();
+    const category = document.getElementById('commonCategory').value;
+    const amount   = parseFloat(document.getElementById('commonAmount').value);
+    const month    = document.getElementById('commonMonth').value;
+
+    if (!name)               { toast('commonToast','Enter expense name.','error'); return; }
+    if (isNaN(amount)||amount<=0) { toast('commonToast','Enter valid amount.','error'); return; }
+    if (!month)              { toast('commonToast','Select a month.','error'); return; }
+
+    DataStore.addCommon({ name, category, amount, month });
+
+    document.getElementById('commonName').value   = '';
+    document.getElementById('commonAmount').value = '';
+
+    toast('commonToast', `✓ ${name} added — ${inr(amount)}`, 'success');
+    renderAll();
+  });
+}
+
+
+/* ─────────────────────────────────────────────
+   10. POPULATE CLIENT FILTER DROPDOWN
+───────────────────────────────────────────── */
+function renderClientFilterDropdown() {
+  const sel = document.getElementById('clientFilter');
+  if (!sel) return;
+
+  const clients = [...new Set(DataStore.getAll().map(t => t.client.toLowerCase()))]
+    .sort()
+    .map(k => DataStore.getAll().find(t => t.client.toLowerCase()===k).client);
+
+  // Rebuild only if changed
+  const existing = [...sel.options].map(o=>o.value).filter(v=>v!=='all');
+  const same = existing.join(',') === clients.map(c=>c.toLowerCase()).join(',');
+  if (same) return;
+
+  sel.innerHTML = '<option value="all">All Clients (Overall)</option>';
+  clients.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.toLowerCase();
+    o.textContent = c;
+    sel.appendChild(o);
+  });
+  sel.value = State.clientFilter;
+}
+
+
+/* ─────────────────────────────────────────────
+   11. TRANSACTION TABLE
+───────────────────────────────────────────── */
 function renderTable() {
-  const tbody    = document.getElementById('transactionBody');
-  const empty    = document.getElementById('tableEmpty');
+  const tbody  = document.getElementById('transactionBody');
+  const empty  = document.getElementById('tableEmpty');
   if (!tbody) return;
 
-  let transactions = DataStore.getAll();
+  const range  = getPeriodRange();
+  const com    = DataStore.getCommon().filter(c => inRange(c.month+'-01', range));
+  const allTx  = DataStore.getAll().filter(t => inRange(t.date, range));
 
-  // ── Apply search ──
+  // Common per client for this period
+  const activeClients  = new Set(allTx.map(t=>t.client.toLowerCase())).size || 1;
+  const totalCommonAmt = com.reduce((s,c)=>s+c.amount, 0);
+  const sharePerClient = totalCommonAmt / activeClients;
+
+  // Apply client filter
+  let txList = State.clientFilter === 'all'
+    ? allTx
+    : allTx.filter(t => t.client.toLowerCase() === State.clientFilter);
+
+  // Search
   if (State.search) {
     const q = State.search.toLowerCase();
-    transactions = transactions.filter(t =>
-      t.client.toLowerCase().includes(q) ||
-      t.project.toLowerCase().includes(q)
-    );
+    txList = txList.filter(t => t.client.toLowerCase().includes(q) || t.project.toLowerCase().includes(q));
   }
 
-  // ── Apply filter ──
-  if (State.filter === 'profit') {
-    transactions = transactions.filter(t => t.profit >= 0);
-  } else if (State.filter === 'loss') {
-    transactions = transactions.filter(t => t.profit < 0);
-  }
+  // P/L filter (based on net = payment - expense - share)
+  txList = txList.map(t => ({
+    ...t,
+    commonShare: sharePerClient,
+    netPL: t.payment - t.expense - sharePerClient,
+  }));
 
-  // ── Apply sort ──
-  if (State.sortByProfit) {
-    transactions = [...transactions].sort((a, b) => b.profit - a.profit);
-  } else {
-    // Default: newest first
-    transactions = [...transactions].sort((a, b) => b.createdAt - a.createdAt);
-  }
+  if (State.tableFilter === 'profit') txList = txList.filter(t => t.netPL >= 0);
+  if (State.tableFilter === 'loss')   txList = txList.filter(t => t.netPL < 0);
 
-  // ── Show/hide empty state ──
+  // Sort
+  if (State.sortByProfit) txList = [...txList].sort((a,b) => b.netPL - a.netPL);
+  else txList = [...txList].sort((a,b) => b.createdAt - a.createdAt);
+
   const allData = DataStore.getAll();
   if (allData.length === 0) {
     empty?.classList.remove('hidden');
@@ -335,490 +420,359 @@ function renderTable() {
   }
   empty?.classList.add('hidden');
 
-  // ── Build rows ──
-  tbody.innerHTML = transactions.map((t, idx) => {
-    const isProfit = t.profit >= 0;
-    const plLabel  = isProfit
-      ? `<span class="pl-pill pl-profit">▲ ${formatINR(t.profit)} Profit</span>`
-      : `<span class="pl-pill pl-loss">▼ ${formatINR(Math.abs(t.profit))} Loss</span>`;
-    const status   = isProfit
+  if (txList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--col-text-muted);padding:2rem">No records match the current filter.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = txList.map((t, i) => {
+    const isPL    = t.netPL >= 0;
+    const plPill  = isPL
+      ? `<span class="pl-pill pl-profit">▲ ${inr(t.netPL)} Profit</span>`
+      : `<span class="pl-pill pl-loss">▼ ${inr(Math.abs(t.netPL))} Loss</span>`;
+    const status  = isPL
       ? `<span class="status-badge status-active">Active</span>`
       : `<span class="status-badge status-warning">Warning</span>`;
 
-    return `
-      <tr class="new-row">
-        <td>${idx + 1}</td>
-        <td class="client-name-cell">
-          <span class="client-badge">${initial(t.client)}</span>${t.client}
-        </td>
-        <td class="project-cell">${t.project}</td>
-        <td class="amount-cell">${formatINR(t.payment)}</td>
-        <td class="amount-cell">${formatINR(t.expense)}</td>
-        <td>${plLabel}</td>
-        <td>${formatDate(t.date)}</td>
-        <td>${status}</td>
-        <td>
-          <button class="btn-delete" onclick="deleteEntry('${t.id}')" title="Delete">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6l-1 14H6L5 6"></path>
-              <path d="M10 11v6M14 11v6"></path>
-            </svg>
-          </button>
-        </td>
-      </tr>`;
+    return `<tr class="new-row">
+      <td>${i+1}</td>
+      <td><span class="client-name-cell"><span class="client-badge">${initial(t.client)}</span>${t.client}</span></td>
+      <td>${t.project}</td>
+      <td class="amount-cell">${inr(t.payment)}</td>
+      <td class="amount-cell">${inr(t.expense)}</td>
+      <td class="common-share-cell">-${inr(t.commonShare)}</td>
+      <td>${plPill}</td>
+      <td>${fmtDate(t.date)}</td>
+      <td>${status}</td>
+      <td><button class="btn-delete" onclick="deleteTx('${t.id}')" title="Delete">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path>
+          <path d="M10 11v6M14 11v6"></path></svg>
+      </button></td>
+    </tr>`;
   }).join('');
 }
 
-/** Delete a row by id and re-render everything */
-function deleteEntry(id) {
+function deleteTx(id) {
   if (!confirm('Delete this transaction?')) return;
-  DataStore.remove(id);
+  DataStore.removeTx(id);
   renderAll();
 }
 
-/** Wire up search, filter tabs, and sort button */
-function initTableControls() {
-  // Search
-  document.getElementById('searchInput')?.addEventListener('input', e => {
-    State.search = e.target.value;
-    renderTable();
-  });
 
-  // Filter buttons
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      State.filter = btn.dataset.filter;
-      renderTable();
-    });
-  });
+/* ─────────────────────────────────────────────
+   12. COMMON EXPENSES TABLE
+───────────────────────────────────────────── */
+function renderCommonTable() {
+  const tbody = document.getElementById('commonBody');
+  const empty = document.getElementById('commonEmpty');
+  if (!tbody) return;
 
-  // Sort button
-  document.getElementById('sortBtn')?.addEventListener('click', function () {
-    State.sortByProfit = !State.sortByProfit;
-    this.classList.toggle('active', State.sortByProfit);
-    this.querySelector('svg')?.setAttribute('style',
-      State.sortByProfit ? 'transform:rotate(180deg)' : '');
-    renderTable();
-  });
+  const list = DataStore.getCommon().sort((a,b) => b.createdAt - a.createdAt);
+
+  if (list.length === 0) {
+    empty?.classList.remove('hidden');
+    tbody.innerHTML = '';
+    return;
+  }
+  empty?.classList.add('hidden');
+
+  tbody.innerHTML = list.map((c,i) => `
+    <tr class="new-row">
+      <td>${i+1}</td>
+      <td style="font-weight:600;color:var(--col-text-primary)">${c.name}</td>
+      <td><span class="status-badge" style="background:rgba(139,92,246,0.1);color:var(--col-common)">${c.category}</span></td>
+      <td class="amount-cell">${inr(c.amount)}</td>
+      <td>${monthLabel(c.month)}</td>
+      <td><button class="btn-delete" onclick="deleteCommon('${c.id}')" title="Delete">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path>
+          <path d="M10 11v6M14 11v6"></path></svg>
+      </button></td>
+    </tr>`).join('');
+
+  setText('commonExpTotal', `${inr(list.reduce((s,c)=>s+c.amount,0))} total`);
+}
+
+function deleteCommon(id) {
+  if (!confirm('Delete this common expense?')) return;
+  DataStore.removeCommon(id);
+  renderAll();
 }
 
 
-/* ─────────────────────────────────────────────────────────────
-   7. ANALYSIS CARDS + MONTHLY FILTER
-───────────────────────────────────────────────────────────── */
-function renderAnalysis() {
-  const transactions = DataStore.getAll();
-
-  // ── Per-client aggregation ──
-  const clientMap = {}; // { 'clientName': { revenue, expense, profit } }
-  transactions.forEach(t => {
-    const key = t.client.toLowerCase();
-    if (!clientMap[key]) {
-      clientMap[key] = { name: t.client, revenue: 0, expense: 0, profit: 0 };
-    }
-    clientMap[key].revenue += t.payment;
-    clientMap[key].expense += t.expense;
-    clientMap[key].profit  += t.profit;
-  });
-
-  const clients = Object.values(clientMap);
-
-  // Most profitable
-  const best = clients.length
-    ? clients.reduce((a, b) => a.profit > b.profit ? a : b)
-    : null;
-
-  // Highest loss (most negative profit)
-  const lossClients = clients.filter(c => c.profit < 0);
-  const worst = lossClients.length
-    ? lossClients.reduce((a, b) => a.profit < b.profit ? a : b)
-    : null;
-
-  // Best client card
-  if (best) {
-    setText('bestClientName',   best.name);
-    setText('bestClientProfit', `${formatINR(best.profit)} ${best.profit >= 0 ? 'Profit' : 'Loss'}`);
-    setText('bestClientMeta',
-      `Revenue: ${formatINR(best.revenue)} · Expense: ${formatINR(best.expense)}`);
-    const el = document.getElementById('bestClientProfit');
-    if (el) el.className = 'analysis-amount ' + (best.profit >= 0 ? 'profit-text' : 'loss-text');
-  } else {
-    setText('bestClientName',   '—');
-    setText('bestClientProfit', '₹0');
-    setText('bestClientMeta',   'No data yet');
-  }
-
-  // Worst client card
-  if (worst) {
-    setText('worstClientName', worst.name);
-    setText('worstClientLoss', `${formatINR(Math.abs(worst.profit))} Loss`);
-    setText('worstClientMeta',
-      `Revenue: ${formatINR(worst.revenue)} · Expense: ${formatINR(worst.expense)}`);
-  } else {
-    setText('worstClientName', '—');
-    setText('worstClientLoss', '₹0 Loss');
-    setText('worstClientMeta', 'No loss clients');
-  }
-
-  // ── Monthly filter ──
-  renderMonthFilter(transactions);
-}
-
-function renderMonthFilter(transactions) {
-  const select = document.getElementById('monthFilter');
-  if (!select) return;
-
-  // Build sorted list of unique months
-  const buckets = [...new Set(transactions.map(t => monthBucket(t.date)))]
-    .filter(Boolean)
-    .sort()
-    .reverse();
-
-  // Rebuild options only if list changed
-  const currentBuckets = [...select.options].map(o => o.value).filter(v => v);
-  const newBuckets = buckets;
-  if (JSON.stringify(currentBuckets) !== JSON.stringify(newBuckets)) {
-    select.innerHTML = '<option value="">All Time</option>';
-    newBuckets.forEach(b => {
-      const opt = document.createElement('option');
-      opt.value = b;
-      opt.textContent = monthLabel(b + '-01');
-      select.appendChild(opt);
-    });
-    // Restore previous selection if still valid
-    if (State.selectedMonth && newBuckets.includes(State.selectedMonth)) {
-      select.value = State.selectedMonth;
-    }
-  }
-
-  // Calculate for selected period
-  const filtered = State.selectedMonth
-    ? transactions.filter(t => monthBucket(t.date) === State.selectedMonth)
-    : transactions;
-
-  const mRevenue  = filtered.reduce((s, t) => s + t.payment, 0);
-  const mExpense  = filtered.reduce((s, t) => s + t.expense, 0);
-  const mProfit   = mRevenue - mExpense;
-
-  setText('monthRevenue',  formatINR(mRevenue));
-  setText('monthExpenses', formatINR(mExpense));
-
-  const profitEl = document.getElementById('monthProfit');
-  if (profitEl) {
-    profitEl.textContent = formatINR(mProfit);
-    profitEl.className   = mProfit >= 0 ? 'profit-text' : 'loss-text';
-  }
-}
-
-function initMonthFilter() {
-  document.getElementById('monthFilter')?.addEventListener('change', e => {
-    State.selectedMonth = e.target.value;
-    renderMonthFilter(DataStore.getAll());
-    renderChart(); // chart also respects month context
-  });
-}
-
-
-/* ─────────────────────────────────────────────────────────────
-   8. CHART.JS LINE GRAPH
-───────────────────────────────────────────────────────────── */
-let chartInstance = null; // holds the Chart.js instance so we can destroy/recreate
+/* ─────────────────────────────────────────────
+   13. CHART — Line graph (period + client aware)
+───────────────────────────────────────────── */
+let chartInst = null;
 
 function renderChart() {
   const canvas = document.getElementById('financialChart');
   const empty  = document.getElementById('chartEmpty');
   if (!canvas) return;
 
-  const transactions = DataStore.getAll();
+  const range = getPeriodRange();
+  const allTx = DataStore.getAll().filter(t => inRange(t.date, range));
+  const allCom= DataStore.getCommon().filter(c => inRange(c.month+'-01', range));
 
-  if (transactions.length === 0) {
+  if (allTx.length === 0) {
     empty?.classList.remove('hidden');
-    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+    if (chartInst) { chartInst.destroy(); chartInst = null; }
     return;
   }
   empty?.classList.add('hidden');
 
-  // ── Aggregate by month bucket ──
-  const bucketMap = {}; // { 'YYYY-MM': { revenue, expense, profit } }
+  // Build per-month buckets
+  const monthSet = new Set([
+    ...allTx.map(t => bucket(t.date)),
+    ...allCom.map(c => c.month),
+  ]);
+  const months = [...monthSet].sort();
 
-  transactions.forEach(t => {
-    const b = monthBucket(t.date);
-    if (!bucketMap[b]) bucketMap[b] = { revenue: 0, expense: 0, profit: 0 };
-    bucketMap[b].revenue += t.payment;
-    bucketMap[b].expense += t.expense;
-    bucketMap[b].profit  += t.profit;
+  const activeClients = new Set(allTx.map(t=>t.client.toLowerCase())).size || 1;
+
+  const revData    = [];
+  const dirExpData = [];
+  const comExpData = [];
+  const netData    = [];
+
+  months.forEach(mo => {
+    const moTx  = allTx.filter(t => bucket(t.date) === mo);
+    const moCom = allCom.filter(c => c.month === mo);
+
+    // Apply client filter
+    const filtTx = State.clientFilter === 'all'
+      ? moTx
+      : moTx.filter(t => t.client.toLowerCase() === State.clientFilter);
+
+    const rev    = filtTx.reduce((s,t)=>s+t.payment, 0);
+    const dirExp = filtTx.reduce((s,t)=>s+t.expense, 0);
+    const moComTotal = moCom.reduce((s,c)=>s+c.amount, 0);
+    const comShare   = State.clientFilter === 'all'
+      ? moComTotal
+      : moComTotal / activeClients;
+
+    revData.push(rev);
+    dirExpData.push(dirExp);
+    comExpData.push(Math.round(comShare));
+    netData.push(Math.round(rev - dirExp - comShare));
   });
 
-  // Sort months chronologically
-  const sortedBuckets = Object.keys(bucketMap).sort();
+  const labels = months.map(m => monthLabel(m));
 
-  const labels   = sortedBuckets.map(b => monthLabel(b + '-01'));
-  const revenues = sortedBuckets.map(b => bucketMap[b].revenue);
-  const expenses = sortedBuckets.map(b => bucketMap[b].expense);
-  const profits  = sortedBuckets.map(b => bucketMap[b].profit);
-
-  // ── Chart.js config ──
   const cfg = {
     type: 'line',
     data: {
       labels,
       datasets: [
-        {
-          label:           'Revenue',
-          data:            revenues,
-          borderColor:     '#6366F1',
-          backgroundColor: 'rgba(99,102,241,0.08)',
-          tension:         0.4,
-          fill:            true,
-          pointBackgroundColor: '#6366F1',
-          pointRadius:     5,
-          pointHoverRadius: 7,
-          borderWidth:     2.5,
-        },
-        {
-          label:           'Expenses',
-          data:            expenses,
-          borderColor:     '#F59E0B',
-          backgroundColor: 'rgba(245,158,11,0.06)',
-          tension:         0.4,
-          fill:            true,
-          pointBackgroundColor: '#F59E0B',
-          pointRadius:     5,
-          pointHoverRadius: 7,
-          borderWidth:     2.5,
-        },
-        {
-          label:           'Net Profit',
-          data:            profits,
-          borderColor:     '#10B981',
-          backgroundColor: 'rgba(16,185,129,0.07)',
-          tension:         0.4,
-          fill:            true,
-          pointBackgroundColor: '#10B981',
-          pointRadius:     5,
-          pointHoverRadius: 7,
-          borderWidth:     2.5,
-        },
+        { label:'Revenue',        data:revData,    borderColor:'#6366F1', backgroundColor:'rgba(99,102,241,0.07)', tension:0.4, fill:true, pointBackgroundColor:'#6366F1', pointRadius:5, pointHoverRadius:7, borderWidth:2.5 },
+        { label:'Direct Expense', data:dirExpData, borderColor:'#F59E0B', backgroundColor:'rgba(245,158,11,0.05)',  tension:0.4, fill:true, pointBackgroundColor:'#F59E0B', pointRadius:5, pointHoverRadius:7, borderWidth:2.5 },
+        { label:'Common Expense', data:comExpData, borderColor:'#8B5CF6', backgroundColor:'rgba(139,92,246,0.05)', tension:0.4, fill:true, pointBackgroundColor:'#8B5CF6', pointRadius:5, pointHoverRadius:7, borderWidth:2, borderDash:[4,3] },
+        { label:'Net Profit',     data:netData,    borderColor:'#10B981', backgroundColor:'rgba(16,185,129,0.07)',  tension:0.4, fill:true, pointBackgroundColor:'#10B981', pointRadius:5, pointHoverRadius:7, borderWidth:2.5 },
       ],
     },
     options: {
-      responsive:          true,
-      maintainAspectRatio: false,
-      interaction: {
-        mode:      'index',
-        intersect: false,
-      },
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode:'index', intersect:false },
       plugins: {
-        legend: { display: false }, // we use our custom legend in HTML
+        legend: { display:false },
         tooltip: {
-          backgroundColor: '#0F172A',
-          titleColor:      '#E2E8F0',
-          bodyColor:       '#94A3B8',
-          padding:         12,
-          cornerRadius:    8,
-          callbacks: {
-            label: ctx => ` ${ctx.dataset.label}: ₹${ctx.parsed.y.toLocaleString('en-IN')}`,
-          },
+          backgroundColor:'#0F172A', titleColor:'#E2E8F0', bodyColor:'#94A3B8',
+          padding:12, cornerRadius:8,
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ₹${ctx.parsed.y.toLocaleString('en-IN')}` },
         },
       },
       scales: {
-        x: {
-          grid:  { display: false },
-          ticks: { color: '#94A3B8', font: { size: 11, family: 'Inter' } },
-        },
+        x: { grid:{display:false}, ticks:{color:'#94A3B8',font:{size:11,family:'Inter'}} },
         y: {
-          grid:  { color: '#F1F5F9' },
-          ticks: {
-            color: '#94A3B8',
-            font:  { size: 11, family: 'Inter' },
-            callback: val => '₹' + (val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val),
-          },
+          grid:{color:'#F1F5F9'},
+          ticks:{ color:'#94A3B8', font:{size:11,family:'Inter'},
+            callback: v => '₹'+(Math.abs(v)>=1000?(v/1000).toFixed(0)+'k':v) },
           beginAtZero: true,
         },
       },
     },
   };
 
-  // Destroy existing chart before re-creating (avoids canvas re-use warnings)
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
-  chartInstance = new Chart(canvas, cfg);
+  if (chartInst) { chartInst.destroy(); chartInst = null; }
+  chartInst = new Chart(canvas, cfg);
 }
 
 
-/* ─────────────────────────────────────────────────────────────
-   9. SIDEBAR NAVIGATION + MOBILE MENU
-───────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   14. FILTER CONTROLS INIT
+───────────────────────────────────────────── */
+function initFilters() {
+  // Period buttons
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      State.period = btn.dataset.period;
+      renderAll();
+    });
+  });
+
+  // Client dropdown
+  document.getElementById('clientFilter')?.addEventListener('change', e => {
+    State.clientFilter = e.target.value;
+    renderAll();
+  });
+
+  // Table search
+  document.getElementById('searchInput')?.addEventListener('input', e => {
+    State.search = e.target.value;
+    renderTable();
+  });
+
+  // Table filter tabs
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      State.tableFilter = btn.dataset.filter;
+      renderTable();
+    });
+  });
+
+  // Sort
+  document.getElementById('sortBtn')?.addEventListener('click', function() {
+    State.sortByProfit = !State.sortByProfit;
+    this.classList.toggle('active', State.sortByProfit);
+    renderTable();
+  });
+}
+
+
+/* ─────────────────────────────────────────────
+   15. NAVIGATION
+───────────────────────────────────────────── */
 function initNavigation() {
-  const pageTitles = {
-    dashboard: { title: 'Overview Dashboard', sub: 'Your business at a glance' },
-    finance:   { title: 'Finance Dashboard',  sub: 'Track revenue, expenses & profit' },
-    clients:   { title: 'Client Management',  sub: 'Manage your client relationships' },
-    reports:   { title: 'Reports & Export',   sub: 'Generate financial reports' },
-    settings:  { title: 'Settings',           sub: 'Configure your workspace' },
+  const pages = {
+    finance:   { title:'Finance Dashboard',   sub:'Revenue, expenses & profit' },
+    dashboard: { title:'Overview Dashboard',  sub:'Business at a glance' },
+    clients:   { title:'Client Management',   sub:'Manage client relationships' },
+    reports:   { title:'Reports & Export',    sub:'Generate financial reports' },
+    settings:  { title:'Settings',            sub:'Configure your workspace' },
   };
 
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', e => {
       e.preventDefault();
       const page = item.dataset.page;
-
-      // Update active nav link
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
       item.classList.add('active');
-
-      // Show correct page
-      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      document.getElementById('page-' + page)?.classList.add('active');
-
-      // Update topbar title
-      const info = pageTitles[page] || {};
-      setText('pageTitle',    info.title || '');
-      setText('pageSubtitle', info.sub   || '');
-
-      // Close mobile sidebar
-      closeMobileSidebar();
+      document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+      document.getElementById('page-'+page)?.classList.add('active');
+      const info = pages[page]||{};
+      setText('pageTitle',    info.title||'');
+      setText('pageSubtitle', info.sub||'');
+      closeSidebar();
     });
   });
 
-  // Mobile menu toggle
-  const menuBtn = document.getElementById('menuToggle');
-  const sidebar  = document.getElementById('sidebar');
-
-  // Create overlay for mobile
-  let overlay = document.querySelector('.sidebar-overlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.className = 'sidebar-overlay';
-    document.body.appendChild(overlay);
-  }
-
-  menuBtn?.addEventListener('click', () => {
-    const isOpen = sidebar.classList.contains('open');
-    if (isOpen) {
-      closeMobileSidebar();
-    } else {
-      sidebar.classList.add('open');
-      overlay.classList.add('show');
-    }
+  // Mobile menu
+  const sidebar = document.getElementById('sidebar');
+  let overlay   = document.querySelector('.sidebar-overlay');
+  if (!overlay) { overlay = document.createElement('div'); overlay.className='sidebar-overlay'; document.body.appendChild(overlay); }
+  document.getElementById('menuToggle')?.addEventListener('click', () => {
+    sidebar.classList.contains('open') ? closeSidebar() : (sidebar.classList.add('open'), overlay.classList.add('show'));
   });
-
-  overlay.addEventListener('click', closeMobileSidebar);
-
-  function closeMobileSidebar() {
-    sidebar?.classList.remove('open');
-    overlay?.classList.remove('show');
-  }
+  overlay.addEventListener('click', closeSidebar);
+  function closeSidebar() { sidebar?.classList.remove('open'); overlay?.classList.remove('show'); }
 }
 
-/** Clear all data with confirmation */
-function initClearButton() {
-  document.getElementById('exportBtn')?.addEventListener('click', () => {
-    if (!confirm('This will permanently delete all transactions. Are you sure?')) return;
+function initClearBtn() {
+  document.getElementById('clearBtn')?.addEventListener('click', () => {
+    if (!confirm('Delete ALL transactions and common expenses? This cannot be undone.')) return;
     DataStore.clearAll();
-    State.selectedMonth = '';
-    State.search        = '';
-    State.filter        = 'all';
-    State.sortByProfit  = false;
-
-    // Reset filter buttons
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    State.period='month'; State.clientFilter='all'; State.tableFilter='all';
+    State.sortByProfit=false; State.search='';
+    document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelector('.period-btn[data-period="month"]')?.classList.add('active');
+    document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
     document.querySelector('.filter-btn[data-filter="all"]')?.classList.add('active');
-
-    // Clear search input
-    const si = document.getElementById('searchInput');
-    if (si) si.value = '';
-
+    const si=document.getElementById('searchInput'); if(si) si.value='';
     renderAll();
-    showToast('All data cleared.', 'error');
   });
 }
 
-/** Set today's date in the topbar */
-function renderCurrentDate() {
-  const el = document.getElementById('currentDate');
-  if (!el) return;
-  const now = new Date();
-  const opts = { weekday:'short', year:'numeric', month:'short', day:'numeric' };
-  el.textContent = now.toLocaleDateString('en-IN', opts);
+function renderDate() {
+  const el=document.getElementById('currentDate');
+  if(el) el.textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
 }
 
 
-/* ─────────────────────────────────────────────────────────────
-   MASTER RENDER — call after every data change
-───────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   MASTER RENDER
+───────────────────────────────────────────── */
 function renderAll() {
+  renderClientFilterDropdown();
   renderSummaryCards();
+  renderPeriodCards();
   renderTable();
-  renderAnalysis();
+  renderCommonTable();
   renderChart();
 }
 
 
-/* ─────────────────────────────────────────────────────────────
-   10. INITIALISATION
-   Boot sequence: wire up all event listeners then render.
-   
-   To upgrade to Firebase later:
-   1. Replace DataStore.getAll/add/remove with Firestore reads/writes
-   2. Call renderAll() inside your Firestore onSnapshot() listener
-   3. Remove localStorage key from DataStore
-───────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   16. BOOT
+───────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('[FinanceFlow] Dashboard initialising...');
+  renderDate();
+  initNavigation();
+  initClientForm();
+  initCommonForm();
+  initFilters();
+  initClearBtn();
 
-  renderCurrentDate();   // topbar date
-  initNavigation();      // sidebar nav + mobile
-  initForm();            // add payment form
-  initTableControls();   // search / filter / sort
-  initMonthFilter();     // month dropdown listener
-  initClearButton();     // clear data button
-
-  // ── Seed demo data if this is the first visit ──
-  if (DataStore.getAll().length === 0) {
-    seedDemoData();
+  // Seed demo data on first visit
+  if (DataStore.getAll().length === 0 && DataStore.getCommon().length === 0) {
+    seedDemo();
   }
 
-  // First full render
   renderAll();
-
-  console.log('[FinanceFlow] Ready. Transactions:', DataStore.getAll().length);
+  console.log('[FinanceFlow v2] Ready.');
 });
 
 
-/* ─────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────
    DEMO DATA SEEDER
-   Populates realistic sample transactions on first load
-   so the dashboard looks great right away.
-   Remove this function or the if-block above when going live.
-───────────────────────────────────────────────────────────── */
-function seedDemoData() {
-  const today  = new Date();
-  const month  = (n) => {
-    const d = new Date(today);
-    d.setMonth(d.getMonth() - n);
-    return d.toISOString().slice(0, 10);
-  };
+   Remove seedDemo() call above when going live.
+───────────────────────────────────────────── */
+function seedDemo() {
+  const now = new Date();
+  const mo  = n => { const d=new Date(now); d.setMonth(d.getMonth()-n); return d.toISOString().slice(0,10); };
+  const ym  = n => { const d=new Date(now); d.setMonth(d.getMonth()-n); return d.toISOString().slice(0,7); };
 
-  const samples = [
-    { client:'ABC Technologies',  project:'Website Redesign',       payment:95000,  expense:45000,  date: month(0) },
-    { client:'XYZ Marketing Co.', project:'Social Media Campaign',  payment:60000,  expense:72000,  date: month(0) },
-    { client:'Patel Enterprises', project:'Brand Identity',         payment:120000, expense:55000,  date: month(0) },
-    { client:'Green Leaf Foods',  project:'E-Commerce Platform',    payment:200000, expense:130000, date: month(1) },
-    { client:'ABC Technologies',  project:'SEO & Analytics Setup',  payment:40000,  expense:18000,  date: month(1) },
-    { client:'Nova Startups',     project:'Mobile App MVP',         payment:180000, expense:195000, date: month(1) },
-    { client:'Bright Solar Ltd',  project:'Digital Marketing',      payment:75000,  expense:32000,  date: month(2) },
-    { client:'XYZ Marketing Co.', project:'Content Strategy',       payment:45000,  expense:28000,  date: month(2) },
-    { client:'Patel Enterprises', project:'Annual Audit Support',   payment:90000,  expense:41000,  date: month(3) },
-    { client:'Mehta & Sons',      project:'ERP Integration',        payment:250000, expense:180000, date: month(3) },
-    { client:'ClearView Optics',  project:'Product Photography',    payment:35000,  expense:52000,  date: month(4) },
-    { client:'Bright Solar Ltd',  project:'Website Maintenance',    payment:30000,  expense:12000,  date: month(4) },
-  ];
+  // Client payments
+  [
+    {client:'ABC Technologies',   project:'Website Redesign',      payment:95000,  expense:45000,  date:mo(0)},
+    {client:'XYZ Marketing',      project:'Social Media Campaign',  payment:60000,  expense:72000,  date:mo(0)},
+    {client:'Patel Enterprises',  project:'Brand Identity',         payment:120000, expense:55000,  date:mo(0)},
+    {client:'Green Leaf Foods',   project:'E-Commerce Platform',    payment:200000, expense:130000, date:mo(1)},
+    {client:'ABC Technologies',   project:'SEO & Analytics',        payment:40000,  expense:18000,  date:mo(1)},
+    {client:'Nova Startups',      project:'Mobile App MVP',         payment:180000, expense:195000, date:mo(1)},
+    {client:'Bright Solar',       project:'Digital Marketing',      payment:75000,  expense:32000,  date:mo(2)},
+    {client:'XYZ Marketing',      project:'Content Strategy',       payment:45000,  expense:28000,  date:mo(2)},
+    {client:'Patel Enterprises',  project:'Annual Audit Support',   payment:90000,  expense:41000,  date:mo(3)},
+    {client:'Mehta & Sons',       project:'ERP Integration',        payment:250000, expense:180000, date:mo(3)},
+    {client:'ClearView Optics',   project:'Product Photography',    payment:35000,  expense:52000,  date:mo(4)},
+    {client:'Bright Solar',       project:'Website Maintenance',    payment:30000,  expense:12000,  date:mo(4)},
+  ].forEach(t => DataStore.addTx(t));
 
-  samples.forEach(s => DataStore.add(s));
+  // Common expenses
+  [
+    {name:'Electricity Bill',       category:'Utilities',      amount:8500,  month:ym(0)},
+    {name:'Adobe Creative Cloud',   category:'Subscriptions',  amount:4200,  month:ym(0)},
+    {name:'Office Rent',            category:'Rent',           amount:25000, month:ym(0)},
+    {name:'Electricity Bill',       category:'Utilities',      amount:7800,  month:ym(1)},
+    {name:'Zoom & Slack',           category:'Subscriptions',  amount:3100,  month:ym(1)},
+    {name:'Office Rent',            category:'Rent',           amount:25000, month:ym(1)},
+    {name:'Internet Bill',          category:'Utilities',      amount:2200,  month:ym(2)},
+    {name:'Office Rent',            category:'Rent',           amount:25000, month:ym(2)},
+    {name:'AWS Hosting',            category:'Subscriptions',  amount:6400,  month:ym(3)},
+    {name:'Office Rent',            category:'Rent',           amount:25000, month:ym(3)},
+  ].forEach(c => DataStore.addCommon(c));
 }
