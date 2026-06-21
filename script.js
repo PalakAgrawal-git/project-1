@@ -21,20 +21,47 @@ const DataStore = (() => {
   const TX_KEY  = 'ff_transactions';  // client payments
   const COM_KEY = 'ff_common_exp';    // common expenses
 
-  /* ── Transactions ── */
-  function getAll()    { try { return JSON.parse(localStorage.getItem(TX_KEY))  || []; } catch { return []; } }
+  /* ── Transactions ──
+     Each transaction now holds an `expenses` array instead of a single
+     amount, so you can log direct expenses for a client payment as they
+     come in — weeks or months apart — each with its own amount, category
+     and date. `expense` is kept as a derived cached total for anything
+     that still reads it directly (summary cards, old records, etc). */
+  function getAll() {
+    let list;
+    try { list = JSON.parse(localStorage.getItem(TX_KEY)) || []; } catch { list = []; }
+    let migrated = false;
+    list = list.map(t => {
+      if (!Array.isArray(t.expenses)) {
+        // Legacy record from before multi-expense support — wrap its
+        // single amount into the new expenses array (one-time upgrade).
+        const legacyAmount = +t.expense || 0;
+        t.expenses = legacyAmount > 0
+          ? [{ id: uid(), amount: legacyAmount, category: t.expenseCategory || 'Other', date: t.date, createdAt: t.createdAt || Date.now() }]
+          : [];
+        migrated = true;
+      }
+      t.expense = t.expenses.reduce((s,e) => s + (+e.amount || 0), 0);
+      return t;
+    });
+    if (migrated) saveAll(list);
+    return list;
+  }
   function saveAll(d)  { localStorage.setItem(TX_KEY,  JSON.stringify(d)); }
 
   function addTx(e) {
     const list = getAll();
+    const initialAmount = +e.expense || 0;
+    const expenses = initialAmount > 0
+      ? [{ id: uid(), amount: initialAmount, category: e.expenseCategory || 'Other', date: e.date || isoToday(), createdAt: Date.now() }]
+      : [];
     const rec  = {
       id:        uid(),
       client:    e.client.trim(),
       project:   e.project.trim(),
       payment:   +e.payment,
-      expense:   +e.expense,
-      expenseCategory: e.expenseCategory || 'Other',
-      profit:    +e.payment - +e.expense,   // direct profit (before common)
+      expenses,
+      expense:   expenses.reduce((s,x) => s + x.amount, 0),
       date:      e.date || isoToday(),
       createdAt: Date.now(),
     };
@@ -44,6 +71,26 @@ const DataStore = (() => {
   }
 
   function removeTx(id) { saveAll(getAll().filter(t => t.id !== id)); }
+
+  /* Add a new expense entry to an existing client payment, any time later */
+  function addExpenseToTx(txId, exp) {
+    const list = getAll();
+    const tx = list.find(t => t.id === txId);
+    if (!tx) return null;
+    const rec = { id: uid(), amount: +exp.amount || 0, category: exp.category || 'Other', date: exp.date || isoToday(), createdAt: Date.now() };
+    tx.expenses.push(rec);
+    saveAll(list);
+    return rec;
+  }
+
+  /* Remove a single expense entry (e.g. to correct a mistake) */
+  function removeExpenseFromTx(txId, expenseId) {
+    const list = getAll();
+    const tx = list.find(t => t.id === txId);
+    if (!tx) return;
+    tx.expenses = tx.expenses.filter(e => e.id !== expenseId);
+    saveAll(list);
+  }
 
   /* ── Common Expenses ── */
   function getCommon()       { try { return JSON.parse(localStorage.getItem(COM_KEY)) || []; } catch { return []; } }
@@ -71,7 +118,7 @@ const DataStore = (() => {
     localStorage.removeItem(COM_KEY);
   }
 
-  return { getAll, addTx, removeTx, getCommon, addCommon, removeCommon, clearAll };
+  return { getAll, addTx, removeTx, addExpenseToTx, removeExpenseFromTx, getCommon, addCommon, removeCommon, clearAll };
 })();
 
 
@@ -106,6 +153,13 @@ function expenseCategoryLabel(cat) {
     Other:          'Other',
   };
   return map[cat] || 'Other';
+}
+
+function expenseSummaryTag(t) {
+  const entries = t.expenses || [];
+  if (entries.length === 0) return '';
+  if (entries.length === 1) return `<span class="expense-tag">${expenseCategoryLabel(entries[0].category)}</span>`;
+  return `<span class="expense-tag">${entries.length} expenses</span>`;
 }
 
 function monthLabel(yyyymm) {
@@ -206,7 +260,7 @@ function periodLabel() {
    and an optional client filter, returns aggregated
    financial data.
 ───────────────────────────────────────────── */
-function calcStats(txList, commonList, clientName = 'all') {
+function calcStats(allTx, commonList, clientName = 'all', range) {
   /*
     Common expense allocation:
     - Find how many unique clients had activity in the period
@@ -214,20 +268,32 @@ function calcStats(txList, commonList, clientName = 'all') {
     - Each client's share = totalCommon / activeClients
     - If viewing one client: their share = totalCommon / activeClients
     - If viewing all: full common total is shown
+
+    Revenue is attributed to the period the PAYMENT was received in.
+    Direct expenses are attributed to the period each EXPENSE ENTRY was
+    actually logged in — since you might add an expense to an old
+    client payment weeks or months later, it should count in the month
+    you actually spent it, not the month the original payment landed.
   */
 
-  // Count unique active clients in period (from full txList, not filtered by client)
-  const allActiveClients = new Set(txList.map(t => t.client.toLowerCase())).size || 1;
+  // Active clients in this period = anyone with a payment OR a logged
+  // expense entry whose own date falls in range (used for common-split)
+  const txInRange  = allTx.filter(t => inRange(t.date, range));
+  const expInRange = allTx.flatMap(t => (t.expenses||[]).filter(e => inRange(e.date, range)).map(e => ({...e, client: t.client})));
+  const allActiveClients = new Set([
+    ...txInRange.map(t => t.client.toLowerCase()),
+    ...expInRange.map(e => e.client.toLowerCase()),
+  ]).size || 1;
+
   const totalCommon      = commonList.reduce((s,c) => s + c.amount, 0);
   const commonPerClient  = totalCommon / allActiveClients;
 
   // Now filter by client if needed
-  const filtered = clientName === 'all'
-    ? txList
-    : txList.filter(t => t.client.toLowerCase() === clientName);
+  const revTx  = clientName === 'all' ? txInRange  : txInRange.filter(t => t.client.toLowerCase() === clientName);
+  const expFor = clientName === 'all' ? expInRange : expInRange.filter(e => e.client.toLowerCase() === clientName);
 
-  const revenue    = filtered.reduce((s,t) => s + t.payment, 0);
-  const directExp  = filtered.reduce((s,t) => s + t.expense, 0);
+  const revenue    = revTx.reduce((s,t) => s + t.payment, 0);
+  const directExp  = expFor.reduce((s,e) => s + (+e.amount||0), 0);
 
   // Common share depends on view
   let commonShare;
@@ -238,9 +304,9 @@ function calcStats(txList, commonList, clientName = 'all') {
   }
 
   const netProfit  = revenue - directExp - commonShare;
-  const uniqueCl   = new Set(filtered.map(t => t.client.toLowerCase())).size;
+  const uniqueCl   = new Set(revTx.map(t => t.client.toLowerCase())).size;
 
-  return { revenue, directExp, commonShare, netProfit, uniqueCl, count: filtered.length };
+  return { revenue, directExp, commonShare, netProfit, uniqueCl, count: revTx.length };
 }
 
 
@@ -283,9 +349,9 @@ function renderSummaryCards() {
 ───────────────────────────────────────────── */
 function renderPeriodCards() {
   const range = getPeriodRange();
-  const tx    = DataStore.getAll().filter(t => inRange(t.date, range));
+  const tx    = DataStore.getAll();
   const com   = DataStore.getCommon().filter(c => inRange(c.month+'-01', range));
-  const stats = calcStats(tx, com, State.clientFilter);
+  const stats = calcStats(tx, com, State.clientFilter, range);
 
   const pRev = document.getElementById('pRevenue');
   const pDir = document.getElementById('pDirectExp');
@@ -318,13 +384,14 @@ function initClientForm() {
     const client  = document.getElementById('clientName').value.trim();
     const project = document.getElementById('projectName').value.trim();
     const payment = parseFloat(document.getElementById('paymentAmount').value);
-    const expense = parseFloat(document.getElementById('expenseAmount').value);
+    const expenseRaw = document.getElementById('expenseAmount').value;
+    const expense = expenseRaw === '' ? 0 : parseFloat(expenseRaw);
     const expenseCategory = document.getElementById('expenseCategory').value;
 
     if (!client)              { toast('clientToast','Enter client name.','error'); return; }
     if (!project)             { toast('clientToast','Enter project name.','error'); return; }
     if (isNaN(payment)||payment<0) { toast('clientToast','Enter valid payment.','error'); return; }
-    if (isNaN(expense)||expense<0) { toast('clientToast','Enter valid expense.','error'); return; }
+    if (isNaN(expense)||expense<0) { toast('clientToast','Direct expense can\'t be negative.','error'); return; }
 
     DataStore.addTx({ client, project, payment, expense, expenseCategory });
 
@@ -335,7 +402,7 @@ function initClientForm() {
     document.getElementById('expenseCategory').value = 'Other';
 
     const p = payment - expense;
-    toast('clientToast', p>=0 ? `✓ Added! Direct profit: ${inr(p)}` : `✓ Added! Direct loss: ${inr(Math.abs(p))}`, p>=0?'success':'error');
+    toast('clientToast', p>=0 ? `✓ Added! Direct profit so far: ${inr(p)}` : `✓ Added! Direct loss so far: ${inr(Math.abs(p))}`, p>=0?'success':'error');
     renderAll();
   });
 }
@@ -467,7 +534,12 @@ function renderTable() {
       <td>${t.project}</td>
       <td class="amount-cell">${inr(t.payment)}</td>
       <td class="amount-cell">${inr(t.expense)}</td>
-      <td>${t.expense > 0 ? `<span class="expense-tag">${expenseCategoryLabel(t.expenseCategory)}</span>` : '—'}</td>
+      <td>
+        <div class="expense-type-cell">
+          ${expenseSummaryTag(t)}
+          <button class="btn-add-expense" onclick="openExpenseModal('${t.id}')" title="Add or manage expenses for this client payment">+ Expense</button>
+        </div>
+      </td>
       <td class="common-share-cell">-${inr(t.commonShare)}</td>
       <td>${plPill}</td>
       <td>${fmtDate(t.date)}</td>
@@ -485,6 +557,114 @@ function deleteTx(id) {
   if (!confirm('Delete this transaction?')) return;
   DataStore.removeTx(id);
   renderAll();
+}
+
+
+/* ─────────────────────────────────────────────
+   11b. EXPENSE MANAGER MODAL
+   Lets you add direct expenses to an existing
+   client payment any time later — weeks or
+   months after the original payment was logged.
+───────────────────────────────────────────── */
+let activeExpenseTxId = null;
+
+function openExpenseModal(txId) {
+  activeExpenseTxId = txId;
+  const overlay = document.getElementById('expenseModalOverlay');
+  if (!overlay) return;
+
+  const dateInput = document.getElementById('newExpenseDate');
+  if (dateInput) dateInput.value = isoToday();
+  const amtInput = document.getElementById('newExpenseAmount');
+  if (amtInput) amtInput.value = '';
+  const catInput = document.getElementById('newExpenseCategory');
+  if (catInput) catInput.value = 'Other';
+  setText('expenseModalToast', '');
+
+  renderExpenseModalList();
+  overlay.classList.add('open');
+}
+
+function closeExpenseModal() {
+  activeExpenseTxId = null;
+  document.getElementById('expenseModalOverlay')?.classList.remove('open');
+}
+
+function renderExpenseModalList() {
+  const tx = DataStore.getAll().find(t => t.id === activeExpenseTxId);
+  const listEl  = document.getElementById('expenseModalList');
+  const emptyEl = document.getElementById('expenseModalEmpty');
+  if (!tx || !listEl) { closeExpenseModal(); return; }
+
+  setText('expenseModalTitle', `Expenses — ${tx.client}`);
+  setText('expenseModalSub', tx.project);
+
+  const entries = [...(tx.expenses||[])].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
+  if (entries.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.classList.remove('hidden');
+  } else {
+    emptyEl.classList.add('hidden');
+    listEl.innerHTML = entries.map(e => `
+      <div class="expense-entry-row">
+        <div class="expense-entry-info">
+          <span class="expense-entry-amount">${inr(e.amount)}</span>
+          <span class="expense-entry-meta">${expenseCategoryLabel(e.category)} · ${fmtDate(e.date)}</span>
+        </div>
+        <button class="expense-entry-delete" onclick="deleteExpenseEntry('${e.id}')" title="Remove this expense">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path>
+          </svg>
+        </button>
+      </div>`).join('');
+  }
+
+  const total = entries.reduce((s,e) => s + (+e.amount||0), 0);
+  setText('expenseModalTotal', `Total: ${inr(total)}`);
+}
+
+function deleteExpenseEntry(expenseId) {
+  if (!activeExpenseTxId) return;
+  if (!confirm('Remove this expense entry?')) return;
+  DataStore.removeExpenseFromTx(activeExpenseTxId, expenseId);
+  renderExpenseModalList();
+  renderAll();
+}
+
+function initExpenseModal() {
+  document.getElementById('expenseModalClose')?.addEventListener('click', closeExpenseModal);
+
+  // Click outside the card (on the dark backdrop) to close
+  document.getElementById('expenseModalOverlay')?.addEventListener('click', e => {
+    if (e.target.id === 'expenseModalOverlay') closeExpenseModal();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeExpenseModal();
+  });
+
+  document.getElementById('addExpenseEntryBtn')?.addEventListener('click', () => {
+    if (!activeExpenseTxId) return;
+    const amount   = parseFloat(document.getElementById('newExpenseAmount').value);
+    const category = document.getElementById('newExpenseCategory').value;
+    const date     = document.getElementById('newExpenseDate').value || isoToday();
+
+    if (isNaN(amount) || amount <= 0) {
+      toast('expenseModalToast', 'Enter a valid amount.', 'error');
+      return;
+    }
+
+    DataStore.addExpenseToTx(activeExpenseTxId, { amount, category, date });
+
+    document.getElementById('newExpenseAmount').value = '';
+    document.getElementById('newExpenseCategory').value = 'Other';
+    document.getElementById('newExpenseDate').value = isoToday();
+
+    toast('expenseModalToast', `✓ Added ${inr(amount)} expense.`, 'success');
+    renderExpenseModalList();
+    renderAll();
+  });
 }
 
 
@@ -549,11 +729,13 @@ function renderChart() {
     return;
   }
 
-  const range = getPeriodRange();
-  const allTx = DataStore.getAll().filter(t => inRange(t.date, range));
-  const allCom= DataStore.getCommon().filter(c => inRange(c.month+'-01', range));
+  const range  = getPeriodRange();
+  const allTxFull = DataStore.getAll();                                   // unfiltered — needed to find expense entries dated in range even if the parent payment isn't
+  const allTx  = allTxFull.filter(t => inRange(t.date, range));            // payments that landed in this period
+  const allExp = allTxFull.flatMap(t => (t.expenses||[]).filter(e => inRange(e.date, range)).map(e => ({...e, client: t.client}))); // expense entries logged in this period
+  const allCom = DataStore.getCommon().filter(c => inRange(c.month+'-01', range));
 
-  if (allTx.length === 0) {
+  if (allTx.length === 0 && allExp.length === 0) {
     empty?.classList.remove('hidden');
     if (chartInst) { chartInst.destroy(); chartInst = null; }
     return;
@@ -563,11 +745,15 @@ function renderChart() {
   // Build per-month buckets
   const monthSet = new Set([
     ...allTx.map(t => bucket(t.date)),
+    ...allExp.map(e => bucket(e.date)),
     ...allCom.map(c => c.month),
   ]);
   const months = [...monthSet].sort();
 
-  const activeClients = new Set(allTx.map(t=>t.client.toLowerCase())).size || 1;
+  const activeClients = new Set([
+    ...allTx.map(t=>t.client.toLowerCase()),
+    ...allExp.map(e=>e.client.toLowerCase()),
+  ]).size || 1;
 
   const revData    = [];
   const dirExpData = [];
@@ -576,15 +762,15 @@ function renderChart() {
 
   months.forEach(mo => {
     const moTx  = allTx.filter(t => bucket(t.date) === mo);
+    const moExp = allExp.filter(e => bucket(e.date) === mo);
     const moCom = allCom.filter(c => c.month === mo);
 
     // Apply client filter
-    const filtTx = State.clientFilter === 'all'
-      ? moTx
-      : moTx.filter(t => t.client.toLowerCase() === State.clientFilter);
+    const filtTx  = State.clientFilter === 'all' ? moTx  : moTx.filter(t => t.client.toLowerCase() === State.clientFilter);
+    const filtExp = State.clientFilter === 'all' ? moExp : moExp.filter(e => e.client.toLowerCase() === State.clientFilter);
 
     const rev    = filtTx.reduce((s,t)=>s+t.payment, 0);
-    const dirExp = filtTx.reduce((s,t)=>s+t.expense, 0);
+    const dirExp = filtExp.reduce((s,e)=>s+(+e.amount||0), 0);
     const moComTotal = moCom.reduce((s,c)=>s+c.amount, 0);
     const comShare   = State.clientFilter === 'all'
       ? moComTotal
@@ -739,9 +925,11 @@ function initMonthPicker() {
 
   // Which months have actual data
   function getDataMonths() {
-    const tx  = DataStore.getAll().map(t => t.date.slice(0,7));
+    const all = DataStore.getAll();
+    const tx  = all.map(t => t.date.slice(0,7));
+    const exp = all.flatMap(t => (t.expenses||[]).map(e => e.date.slice(0,7)));
     const com = DataStore.getCommon().map(c => c.month);
-    return new Set([...tx, ...com]);
+    return new Set([...tx, ...exp, ...com]);
   }
 
   // Render the 12 month buttons for pickerYear
@@ -962,6 +1150,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   initClientForm();
   initCommonForm();
+  initExpenseModal();
   initMonthPicker();   // calendar month picker
   initFilters();
   initClearBtn();
