@@ -523,4 +523,3 @@ a { text-decoration: none; color: inherit; }
 .expense-modal-divider { height: 1px; background: var(--col-border); }
 .expense-modal-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
 .expense-modal-form .form-group:last-child { grid-column: 1 / -1; }
-/* test change */
