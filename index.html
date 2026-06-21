@@ -167,8 +167,8 @@
               <input type="number" id="paymentAmount" placeholder="e.g. 50000" min="0"/>
             </div>
             <div class="form-group">
-              <label>Direct Expense for Client (₹)</label>
-              <input type="number" id="expenseAmount" placeholder="e.g. 30000" min="0"/>
+              <label>Direct Expense for Client (₹) <span class="label-optional">— optional</span></label>
+              <input type="number" id="expenseAmount" placeholder="Leave blank if unknown yet" min="0"/>
             </div>
             <div class="form-group">
               <label>Expense Type</label>
@@ -425,6 +425,56 @@
     <div id="page-settings" class="page"><div class="placeholder-page"><div class="placeholder-icon">⚙️</div><h2>Settings</h2><p>Multi-user &amp; Firebase auth coming soon.</p></div></div>
 
   </main>
+
+  <!-- ═══════════════ EXPENSE MANAGER MODAL ═══════════════ -->
+  <div class="expense-modal-overlay" id="expenseModalOverlay">
+    <div class="card expense-modal">
+      <div class="expense-modal-header">
+        <div>
+          <h3 id="expenseModalTitle">Expenses</h3>
+          <span class="expense-modal-sub" id="expenseModalSub">—</span>
+        </div>
+        <button class="expense-modal-close" id="expenseModalClose" title="Close">&times;</button>
+      </div>
+
+      <div class="expense-modal-list" id="expenseModalList">
+        <!-- existing expense entries injected by JS -->
+      </div>
+      <div class="expense-modal-empty hidden" id="expenseModalEmpty">No expenses logged yet for this client payment.</div>
+
+      <div class="expense-modal-total" id="expenseModalTotal">Total: ₹0</div>
+
+      <div class="expense-modal-divider"></div>
+
+      <div class="expense-modal-form">
+        <div class="form-group">
+          <label>Amount (₹)</label>
+          <input type="number" id="newExpenseAmount" placeholder="e.g. 8000" min="0"/>
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select id="newExpenseCategory">
+            <option value="Material">Material / Supplies</option>
+            <option value="Subcontractor">Subcontractor / Freelancer</option>
+            <option value="Software">Software / Tools</option>
+            <option value="Travel">Travel / Transport</option>
+            <option value="Printing">Printing / Stationery</option>
+            <option value="Logistics">Logistics / Shipping</option>
+            <option value="Other" selected>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="newExpenseDate"/>
+        </div>
+      </div>
+      <button class="btn-primary full-width" id="addExpenseEntryBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        Add Expense
+      </button>
+      <div class="form-toast" id="expenseModalToast"></div>
+    </div>
+  </div>
 
   <script src="script.js?v=2"></script>
 </body>
