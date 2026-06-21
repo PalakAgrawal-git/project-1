@@ -129,9 +129,10 @@ function toast(id, msg, type='success') {
    3. APP STATE
 ───────────────────────────────────────────── */
 const State = {
-  period:       'all',     // 'month' | '3months' | 'year' | 'all'
-  clientFilter: 'all',     // 'all' or client name (lowercase)
-  tableFilter:  'all',     // 'all' | 'profit' | 'loss'
+  period:       'all',     // 'month' | '3months' | 'year' | 'all' | 'custom'
+  customMonth:  '',        // 'YYYY-MM' when period === 'custom'
+  clientFilter: 'all',
+  tableFilter:  'all',
   sortByProfit: false,
   search:       '',
 };
@@ -157,7 +158,16 @@ function getPeriodRange() {
   if (State.period === 'year') {
     return { start: `${now.getFullYear()}-01-01`, end: today };
   }
-  // all — use very wide range
+  // Custom month selected from calendar picker
+  if (State.period === 'custom' && State.customMonth) {
+    const [y, m] = State.customMonth.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate(); // last day of chosen month
+    return {
+      start: `${State.customMonth}-01`,
+      end:   `${State.customMonth}-${String(lastDay).padStart(2,'0')}`,
+    };
+  }
+  // all — wide range
   return { start: '2000-01-01', end: '2099-12-31' };
 }
 
@@ -171,6 +181,7 @@ function periodLabel() {
   if (State.period === 'month')   return new Date().toLocaleString('en-IN',{month:'long',year:'numeric'});
   if (State.period === '3months') return 'Last 3 Months';
   if (State.period === 'year')    return `Year ${now.getFullYear()}`;
+  if (State.period === 'custom' && State.customMonth) return monthLabel(State.customMonth);
   return 'All Time';
 }
 
@@ -676,15 +687,131 @@ function renderChart() {
 
 
 /* ─────────────────────────────────────────────
+   14a. MONTH PICKER
+───────────────────────────────────────────── */
+function initMonthPicker() {
+  const popup    = document.getElementById('monthPickerPopup');
+  const btn      = document.getElementById('pickMonthBtn');
+  const yearEl   = document.getElementById('mpYear');
+  const grid     = document.getElementById('mpGrid');
+  const labelEl  = document.getElementById('pickMonthLabel');
+  const prevBtn  = document.getElementById('mpPrevYear');
+  const nextBtn  = document.getElementById('mpNextYear');
+
+  if (!popup || !btn) return;
+
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun',
+                  'Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Picker's internal year (navigation state)
+  let pickerYear = new Date().getFullYear();
+
+  // Which months have actual data
+  function getDataMonths() {
+    const tx  = DataStore.getAll().map(t => t.date.slice(0,7));
+    const com = DataStore.getCommon().map(c => c.month);
+    return new Set([...tx, ...com]);
+  }
+
+  // Render the 12 month buttons for pickerYear
+  function renderGrid() {
+    yearEl.textContent = pickerYear;
+    const now       = new Date();
+    const curYM     = isoToday().slice(0,7);          // today's YYYY-MM
+    const dataSet   = getDataMonths();
+
+    grid.innerHTML = MONTHS.map((mo, i) => {
+      const ym    = `${pickerYear}-${String(i+1).padStart(2,'0')}`;
+      const isCur = ym === curYM;
+      const isSel = ym === State.customMonth && State.period === 'custom';
+      const hasDa = dataSet.has(ym);
+      let cls = 'mp-month-btn';
+      if (isCur) cls += ' current-month';
+      if (isSel) cls += ' selected';
+      if (hasDa) cls += ' has-data';
+      return `<button class="${cls}" data-ym="${ym}">${mo}</button>`;
+    }).join('');
+
+    // Click a month button
+    grid.querySelectorAll('.mp-month-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        const ym = b.dataset.ym;
+        State.period      = 'custom';
+        State.customMonth = ym;
+
+        // Update the Pick Month button label
+        const [y,m] = ym.split('-');
+        labelEl.textContent = `${MONTHS[+m-1]} ${y}`;
+
+        // Mark all period-btn inactive, then activate pick-month-btn
+        document.querySelectorAll('.period-btn').forEach(pb => pb.classList.remove('active'));
+        btn.classList.add('active');
+
+        closePopup();
+        renderAll();
+        renderGrid(); // refresh selection highlight
+      });
+    });
+  }
+
+  function openPopup() {
+    // Sync picker year to current custom selection or today
+    if (State.customMonth) {
+      pickerYear = parseInt(State.customMonth.split('-')[0]);
+    } else {
+      pickerYear = new Date().getFullYear();
+    }
+    renderGrid();
+    popup.classList.add('open');
+  }
+
+  function closePopup() {
+    popup.classList.remove('open');
+  }
+
+  // Toggle popup on button click
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    popup.classList.contains('open') ? closePopup() : openPopup();
+  });
+
+  // Year navigation
+  prevBtn?.addEventListener('click', e => {
+    e.stopPropagation();
+    pickerYear--;
+    renderGrid();
+  });
+  nextBtn?.addEventListener('click', e => {
+    e.stopPropagation();
+    pickerYear++;
+    renderGrid();
+  });
+
+  // Close when clicking outside
+  document.addEventListener('click', e => {
+    if (!popup.contains(e.target) && e.target !== btn) {
+      closePopup();
+    }
+  });
+
+  // Expose re-render so renderAll can refresh data dots
+  window._refreshMonthPicker = renderGrid;
+}
+
+
+/* ─────────────────────────────────────────────
    14. FILTER CONTROLS INIT
 ───────────────────────────────────────────── */
 function initFilters() {
-  // Period buttons
-  document.querySelectorAll('.period-btn').forEach(btn => {
+  // Period buttons (excluding the custom pick-month button which has its own handler)
+  document.querySelectorAll('.period-btn:not(#pickMonthBtn)').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
       State.period = btn.dataset.period;
+      // Reset custom month label when switching away
+      const lbl = document.getElementById('pickMonthLabel');
+      if (lbl) lbl.textContent = 'Pick Month';
       renderAll();
     });
   });
@@ -762,7 +889,7 @@ function initClearBtn() {
   document.getElementById('clearBtn')?.addEventListener('click', () => {
     if (!confirm('Delete ALL transactions and common expenses? This cannot be undone.')) return;
     DataStore.clearAll();
-    State.period='all';   State.clientFilter='all'; State.tableFilter='all';
+    State.period='all'; State.customMonth=''; State.clientFilter='all'; State.tableFilter='all';
     State.sortByProfit=false; State.search='';
     document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
     document.querySelector('.period-btn[data-period="all"]')?.classList.add('active');
@@ -789,6 +916,10 @@ function renderAll() {
   renderTable();
   renderCommonTable();
   renderChart();
+  // Refresh data-dots on month picker if open
+  if (typeof window._refreshMonthPicker === 'function') {
+    window._refreshMonthPicker();
+  }
 }
 
 
@@ -800,6 +931,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   initClientForm();
   initCommonForm();
+  initMonthPicker();   // calendar month picker
   initFilters();
   initClearBtn();
 
