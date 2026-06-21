@@ -33,6 +33,7 @@ const DataStore = (() => {
       project:   e.project.trim(),
       payment:   +e.payment,
       expense:   +e.expense,
+      expenseCategory: e.expenseCategory || 'Other',
       profit:    +e.payment - +e.expense,   // direct profit (before common)
       date:      e.date || isoToday(),
       createdAt: Date.now(),
@@ -93,6 +94,19 @@ function fmtDate(iso) {
 }
 
 function bucket(iso)  { return iso ? iso.slice(0,7) : ''; }  // 'YYYY-MM'
+
+function expenseCategoryLabel(cat) {
+  const map = {
+    Material:       'Material / Supplies',
+    Subcontractor:  'Subcontractor / Freelancer',
+    Software:       'Software / Tools',
+    Travel:         'Travel / Transport',
+    Printing:       'Printing / Stationery',
+    Logistics:      'Logistics / Shipping',
+    Other:          'Other',
+  };
+  return map[cat] || 'Other';
+}
 
 function monthLabel(yyyymm) {
   if (!yyyymm) return '';
@@ -305,18 +319,20 @@ function initClientForm() {
     const project = document.getElementById('projectName').value.trim();
     const payment = parseFloat(document.getElementById('paymentAmount').value);
     const expense = parseFloat(document.getElementById('expenseAmount').value);
+    const expenseCategory = document.getElementById('expenseCategory').value;
 
     if (!client)              { toast('clientToast','Enter client name.','error'); return; }
     if (!project)             { toast('clientToast','Enter project name.','error'); return; }
     if (isNaN(payment)||payment<0) { toast('clientToast','Enter valid payment.','error'); return; }
     if (isNaN(expense)||expense<0) { toast('clientToast','Enter valid expense.','error'); return; }
 
-    DataStore.addTx({ client, project, payment, expense });
+    DataStore.addTx({ client, project, payment, expense, expenseCategory });
 
     document.getElementById('clientName').value    = '';
     document.getElementById('projectName').value   = '';
     document.getElementById('paymentAmount').value = '';
     document.getElementById('expenseAmount').value = '';
+    document.getElementById('expenseCategory').value = 'Other';
 
     const p = payment - expense;
     toast('clientToast', p>=0 ? `✓ Added! Direct profit: ${inr(p)}` : `✓ Added! Direct loss: ${inr(Math.abs(p))}`, p>=0?'success':'error');
@@ -432,7 +448,7 @@ function renderTable() {
   empty?.classList.add('hidden');
 
   if (txList.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--col-text-muted);padding:2rem">No records match the current filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--col-text-muted);padding:2rem">No records match the current filter.</td></tr>`;
     return;
   }
 
@@ -451,6 +467,7 @@ function renderTable() {
       <td>${t.project}</td>
       <td class="amount-cell">${inr(t.payment)}</td>
       <td class="amount-cell">${inr(t.expense)}</td>
+      <td>${t.expense > 0 ? `<span class="expense-tag">${expenseCategoryLabel(t.expenseCategory)}</span>` : '—'}</td>
       <td class="common-share-cell">-${inr(t.commonShare)}</td>
       <td>${plPill}</td>
       <td>${fmtDate(t.date)}</td>
