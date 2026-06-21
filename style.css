@@ -437,3 +437,89 @@ a { text-decoration: none; color: inherit; }
 .mp-month-btn.has-data.selected::after {
   background: rgba(255,255,255,0.7);
 }
+
+/* ── EXPENSE TYPE CELL (transactions table) ── */
+.expense-type-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+.label-optional { font-weight: 400; color: var(--col-text-muted); text-transform: none; letter-spacing: 0; }
+.btn-add-expense {
+  border: 1.5px dashed var(--col-border);
+  background: transparent;
+  color: var(--col-revenue);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.18rem 0.55rem;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.btn-add-expense:hover { border-color: var(--col-revenue); background: rgba(99,102,241,0.06); }
+
+/* ── EXPENSE MANAGER MODAL ── */
+.expense-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,0.45);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+.expense-modal-overlay.open { display: flex; }
+.expense-modal {
+  width: 100%;
+  max-width: 460px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.expense-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.expense-modal-header h3 { font-size: 1.05rem; font-weight: 700; color: var(--col-text-primary); margin: 0; }
+.expense-modal-sub { font-size: 0.78rem; color: var(--col-text-muted); }
+.expense-modal-close {
+  border: none;
+  background: var(--col-page-bg);
+  color: var(--col-text-secondary);
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.expense-modal-close:hover { background: var(--col-border); }
+.expense-modal-list { display: flex; flex-direction: column; gap: 0.5rem; max-height: 220px; overflow-y: auto; }
+.expense-entry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--col-border);
+  border-radius: var(--radius-sm);
+  background: var(--col-page-bg);
+}
+.expense-entry-info { display: flex; flex-direction: column; gap: 0.15rem; }
+.expense-entry-amount { font-weight: 700; color: var(--col-text-primary); font-size: 0.85rem; }
+.expense-entry-meta { font-size: 0.68rem; color: var(--col-text-muted); display: flex; gap: 0.4rem; align-items: center; }
+.expense-entry-delete {
+  border: none;
+  background: none;
+  color: var(--col-loss);
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 50%;
+  display: flex;
+  flex-shrink: 0;
+}
+.expense-entry-delete:hover { background: rgba(244,63,94,0.1); }
+.expense-modal-empty { font-size: 0.8rem; color: var(--col-text-muted); text-align: center; padding: 0.5rem 0; }
+.expense-modal-empty.hidden { display: none; }
+.expense-modal-total { font-size: 0.85rem; font-weight: 700; color: var(--col-text-primary); text-align: right; }
+.expense-modal-divider { height: 1px; background: var(--col-border); }
+.expense-modal-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
+.expense-modal-form .form-group:last-child { grid-column: 1 / -1; }
