@@ -569,9 +569,16 @@ function deleteTx(id) {
 let activeExpenseTxId = null;
 
 function openExpenseModal(txId) {
-  activeExpenseTxId = txId;
   const overlay = document.getElementById('expenseModalOverlay');
   if (!overlay) return;
+
+  const tx = DataStore.getAll().find(t => t.id === txId);
+  if (!tx) {
+    alert('Could not find that client payment. Please refresh the page and try again.');
+    return;
+  }
+
+  activeExpenseTxId = txId;
 
   const dateInput = document.getElementById('newExpenseDate');
   if (dateInput) dateInput.value = isoToday();
