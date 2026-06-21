@@ -256,6 +256,16 @@ a { text-decoration: none; color: inherit; }
 .table-empty p { font-size: 0.82rem; color: var(--col-text-muted); }
 .table-empty.hidden { display: none; }
 .common-share-cell { color: var(--col-common); font-weight: 600; font-size: 0.75rem; }
+.expense-tag {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 99px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: rgba(245,158,11,0.1);
+  color: var(--col-expense);
+  white-space: nowrap;
+}
 
 /* ── PLACEHOLDER PAGES ── */
 .placeholder-page { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1rem; padding: 4rem 2rem; background: var(--col-card-bg); border-radius: var(--radius-lg); border: 1px solid var(--col-border); margin: 1.5rem; }
