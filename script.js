@@ -129,7 +129,7 @@ function toast(id, msg, type='success') {
    3. APP STATE
 ───────────────────────────────────────────── */
 const State = {
-  period:       'month',   // 'month' | '3months' | 'year' | 'all'
+  period:       'all',     // 'month' | '3months' | 'year' | 'all'
   clientFilter: 'all',     // 'all' or client name (lowercase)
   tableFilter:  'all',     // 'all' | 'profit' | 'loss'
   sortByProfit: false,
@@ -565,29 +565,105 @@ function renderChart() {
     data: {
       labels,
       datasets: [
-        { label:'Revenue',        data:revData,    borderColor:'#6366F1', backgroundColor:'rgba(99,102,241,0.07)', tension:0.4, fill:true, pointBackgroundColor:'#6366F1', pointRadius:5, pointHoverRadius:7, borderWidth:2.5 },
-        { label:'Direct Expense', data:dirExpData, borderColor:'#F59E0B', backgroundColor:'rgba(245,158,11,0.05)',  tension:0.4, fill:true, pointBackgroundColor:'#F59E0B', pointRadius:5, pointHoverRadius:7, borderWidth:2.5 },
-        { label:'Common Expense', data:comExpData, borderColor:'#8B5CF6', backgroundColor:'rgba(139,92,246,0.05)', tension:0.4, fill:true, pointBackgroundColor:'#8B5CF6', pointRadius:5, pointHoverRadius:7, borderWidth:2, borderDash:[4,3] },
-        { label:'Net Profit',     data:netData,    borderColor:'#10B981', backgroundColor:'rgba(16,185,129,0.07)',  tension:0.4, fill:true, pointBackgroundColor:'#10B981', pointRadius:5, pointHoverRadius:7, borderWidth:2.5 },
+        {
+          label: 'Revenue',
+          data: revData,
+          borderColor: '#6366F1',
+          backgroundColor: 'rgba(99,102,241,0.08)',
+          tension: 0.4, fill: true, spanGaps: true,
+          pointBackgroundColor: '#fff',
+          pointBorderColor: '#6366F1',
+          pointBorderWidth: 2.5,
+          pointRadius: 6, pointHoverRadius: 9,
+          borderWidth: 3,
+        },
+        {
+          label: 'Direct Expense',
+          data: dirExpData,
+          borderColor: '#F59E0B',
+          backgroundColor: 'rgba(245,158,11,0.06)',
+          tension: 0.4, fill: true, spanGaps: true,
+          pointBackgroundColor: '#fff',
+          pointBorderColor: '#F59E0B',
+          pointBorderWidth: 2.5,
+          pointRadius: 6, pointHoverRadius: 9,
+          borderWidth: 2.5,
+        },
+        {
+          label: 'Common Expense',
+          data: comExpData,
+          borderColor: '#8B5CF6',
+          backgroundColor: 'rgba(139,92,246,0.05)',
+          tension: 0.4, fill: true, spanGaps: true,
+          pointBackgroundColor: '#fff',
+          pointBorderColor: '#8B5CF6',
+          pointBorderWidth: 2,
+          pointRadius: 5, pointHoverRadius: 8,
+          borderWidth: 2,
+          borderDash: [6, 3],
+        },
+        {
+          label: 'Net Profit',
+          data: netData,
+          borderColor: '#10B981',
+          backgroundColor: 'rgba(16,185,129,0.08)',
+          tension: 0.4, fill: true, spanGaps: true,
+          pointBackgroundColor: '#fff',
+          pointBorderColor: '#10B981',
+          pointBorderWidth: 2.5,
+          pointRadius: 6, pointHoverRadius: 9,
+          borderWidth: 3,
+        },
       ],
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode:'index', intersect:false },
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      animation: { duration: 600, easing: 'easeInOutQuart' },
       plugins: {
-        legend: { display:false },
+        legend: { display: false }, // using custom HTML legend
         tooltip: {
-          backgroundColor:'#0F172A', titleColor:'#E2E8F0', bodyColor:'#94A3B8',
-          padding:12, cornerRadius:8,
-          callbacks: { label: ctx => ` ${ctx.dataset.label}: ₹${ctx.parsed.y.toLocaleString('en-IN')}` },
+          backgroundColor: '#0F172A',
+          titleColor: '#F1F5F9',
+          bodyColor: '#94A3B8',
+          padding: 14,
+          cornerRadius: 10,
+          displayColors: true,
+          boxWidth: 10, boxHeight: 10,
+          callbacks: {
+            title: items => items[0].label,
+            label: ctx => {
+              const val = ctx.parsed.y;
+              const sign = val < 0 ? '-' : '';
+              return `  ${ctx.dataset.label}: ${sign}₹${Math.abs(val).toLocaleString('en-IN')}`;
+            },
+          },
         },
       },
       scales: {
-        x: { grid:{display:false}, ticks:{color:'#94A3B8',font:{size:11,family:'Inter'}} },
+        x: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: {
+            color: '#94A3B8',
+            font: { size: 12, family: 'Inter', weight: '500' },
+            padding: 8,
+          },
+        },
         y: {
-          grid:{color:'#F1F5F9'},
-          ticks:{ color:'#94A3B8', font:{size:11,family:'Inter'},
-            callback: v => '₹'+(Math.abs(v)>=1000?(v/1000).toFixed(0)+'k':v) },
+          grid: { color: '#F1F5F9', drawBorder: false },
+          border: { display: false, dash: [4, 4] },
+          ticks: {
+            color: '#94A3B8',
+            font: { size: 11, family: 'Inter' },
+            padding: 10,
+            callback: v => {
+              if (Math.abs(v) >= 100000) return '₹' + (v/100000).toFixed(1) + 'L';
+              if (Math.abs(v) >= 1000)   return '₹' + (v/1000).toFixed(0) + 'k';
+              return '₹' + v;
+            },
+          },
           beginAtZero: true,
         },
       },
@@ -686,10 +762,10 @@ function initClearBtn() {
   document.getElementById('clearBtn')?.addEventListener('click', () => {
     if (!confirm('Delete ALL transactions and common expenses? This cannot be undone.')) return;
     DataStore.clearAll();
-    State.period='month'; State.clientFilter='all'; State.tableFilter='all';
+    State.period='all';   State.clientFilter='all'; State.tableFilter='all';
     State.sortByProfit=false; State.search='';
     document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
-    document.querySelector('.period-btn[data-period="month"]')?.classList.add('active');
+    document.querySelector('.period-btn[data-period="all"]')?.classList.add('active');
     document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
     document.querySelector('.filter-btn[data-filter="all"]')?.classList.add('active');
     const si=document.getElementById('searchInput'); if(si) si.value='';
@@ -743,36 +819,81 @@ document.addEventListener('DOMContentLoaded', () => {
 ───────────────────────────────────────────── */
 function seedDemo() {
   const now = new Date();
-  const mo  = n => { const d=new Date(now); d.setMonth(d.getMonth()-n); return d.toISOString().slice(0,10); };
-  const ym  = n => { const d=new Date(now); d.setMonth(d.getMonth()-n); return d.toISOString().slice(0,7); };
+  // mo(n) = date n months ago (mid-month so it reads cleanly)
+  const mo  = (n, day=15) => {
+    const d = new Date(now);
+    d.setMonth(d.getMonth() - n);
+    d.setDate(day);
+    return d.toISOString().slice(0,10);
+  };
+  const ym = n => {
+    const d = new Date(now);
+    d.setMonth(d.getMonth() - n);
+    return d.toISOString().slice(0,7);
+  };
 
-  // Client payments
-  [
-    {client:'ABC Technologies',   project:'Website Redesign',      payment:95000,  expense:45000,  date:mo(0)},
-    {client:'XYZ Marketing',      project:'Social Media Campaign',  payment:60000,  expense:72000,  date:mo(0)},
-    {client:'Patel Enterprises',  project:'Brand Identity',         payment:120000, expense:55000,  date:mo(0)},
-    {client:'Green Leaf Foods',   project:'E-Commerce Platform',    payment:200000, expense:130000, date:mo(1)},
-    {client:'ABC Technologies',   project:'SEO & Analytics',        payment:40000,  expense:18000,  date:mo(1)},
-    {client:'Nova Startups',      project:'Mobile App MVP',         payment:180000, expense:195000, date:mo(1)},
-    {client:'Bright Solar',       project:'Digital Marketing',      payment:75000,  expense:32000,  date:mo(2)},
-    {client:'XYZ Marketing',      project:'Content Strategy',       payment:45000,  expense:28000,  date:mo(2)},
-    {client:'Patel Enterprises',  project:'Annual Audit Support',   payment:90000,  expense:41000,  date:mo(3)},
-    {client:'Mehta & Sons',       project:'ERP Integration',        payment:250000, expense:180000, date:mo(3)},
-    {client:'ClearView Optics',   project:'Product Photography',    payment:35000,  expense:52000,  date:mo(4)},
-    {client:'Bright Solar',       project:'Website Maintenance',    payment:30000,  expense:12000,  date:mo(4)},
-  ].forEach(t => DataStore.addTx(t));
+  /*  6 months of client payments across 6 clients
+      so the chart shows clear multi-month trend lines  */
+  const payments = [
+    // Current month
+    {client:'ABC Technologies',  project:'Website Redesign',      payment:95000,  expense:42000, date:mo(0,5)},
+    {client:'Patel Enterprises', project:'Brand Identity',         payment:120000, expense:55000, date:mo(0,12)},
+    {client:'XYZ Marketing',     project:'Social Media Q2',        payment:60000,  expense:72000, date:mo(0,18)},
 
-  // Common expenses
-  [
-    {name:'Electricity Bill',       category:'Utilities',      amount:8500,  month:ym(0)},
-    {name:'Adobe Creative Cloud',   category:'Subscriptions',  amount:4200,  month:ym(0)},
-    {name:'Office Rent',            category:'Rent',           amount:25000, month:ym(0)},
-    {name:'Electricity Bill',       category:'Utilities',      amount:7800,  month:ym(1)},
-    {name:'Zoom & Slack',           category:'Subscriptions',  amount:3100,  month:ym(1)},
-    {name:'Office Rent',            category:'Rent',           amount:25000, month:ym(1)},
-    {name:'Internet Bill',          category:'Utilities',      amount:2200,  month:ym(2)},
-    {name:'Office Rent',            category:'Rent',           amount:25000, month:ym(2)},
-    {name:'AWS Hosting',            category:'Subscriptions',  amount:6400,  month:ym(3)},
-    {name:'Office Rent',            category:'Rent',           amount:25000, month:ym(3)},
-  ].forEach(c => DataStore.addCommon(c));
+    // 1 month ago
+    {client:'Green Leaf Foods',  project:'E-Commerce Platform',    payment:200000, expense:130000,date:mo(1,8)},
+    {client:'ABC Technologies',  project:'SEO & Analytics',        payment:55000,  expense:22000, date:mo(1,14)},
+    {client:'Nova Startups',     project:'Mobile App MVP',         payment:180000, expense:195000,date:mo(1,20)},
+
+    // 2 months ago
+    {client:'Bright Solar',      project:'Digital Marketing',      payment:75000,  expense:32000, date:mo(2,6)},
+    {client:'XYZ Marketing',     project:'Content Strategy',       payment:45000,  expense:28000, date:mo(2,16)},
+    {client:'Mehta & Sons',      project:'Cloud Migration',        payment:160000, expense:98000, date:mo(2,22)},
+
+    // 3 months ago
+    {client:'Patel Enterprises', project:'Annual Audit Support',   payment:90000,  expense:41000, date:mo(3,9)},
+    {client:'Mehta & Sons',      project:'ERP Integration',        payment:250000, expense:180000,date:mo(3,17)},
+    {client:'ClearView Optics',  project:'Product Photography',    payment:35000,  expense:52000, date:mo(3,24)},
+
+    // 4 months ago
+    {client:'Bright Solar',      project:'Website Maintenance',    payment:30000,  expense:12000, date:mo(4,7)},
+    {client:'ABC Technologies',  project:'UI/UX Overhaul',         payment:85000,  expense:38000, date:mo(4,15)},
+    {client:'Green Leaf Foods',  project:'Inventory System',       payment:110000, expense:75000, date:mo(4,21)},
+
+    // 5 months ago
+    {client:'Nova Startups',     project:'Landing Page Design',    payment:40000,  expense:18000, date:mo(5,10)},
+    {client:'ClearView Optics',  project:'Brand Refresh',          payment:65000,  expense:44000, date:mo(5,16)},
+    {client:'XYZ Marketing',     project:'Email Campaign',         payment:32000,  expense:20000, date:mo(5,22)},
+  ];
+  payments.forEach(t => DataStore.addTx(t));
+
+  /*  Common expenses every month for 6 months
+      so they show up consistently on the chart  */
+  const common = [
+    // Current month
+    {name:'Electricity Bill',      category:'Utilities',     amount:8500,  month:ym(0)},
+    {name:'Adobe Creative Cloud',  category:'Subscriptions', amount:4200,  month:ym(0)},
+    {name:'Office Rent',           category:'Rent',          amount:25000, month:ym(0)},
+    // 1 month ago
+    {name:'Electricity Bill',      category:'Utilities',     amount:7800,  month:ym(1)},
+    {name:'Zoom & Slack',          category:'Subscriptions', amount:3100,  month:ym(1)},
+    {name:'Office Rent',           category:'Rent',          amount:25000, month:ym(1)},
+    // 2 months ago
+    {name:'Internet + Electricity',category:'Utilities',     amount:9200,  month:ym(2)},
+    {name:'AWS Hosting',           category:'Subscriptions', amount:6400,  month:ym(2)},
+    {name:'Office Rent',           category:'Rent',          amount:25000, month:ym(2)},
+    // 3 months ago
+    {name:'Electricity Bill',      category:'Utilities',     amount:8100,  month:ym(3)},
+    {name:'Adobe + Figma',         category:'Subscriptions', amount:5500,  month:ym(3)},
+    {name:'Office Rent',           category:'Rent',          amount:25000, month:ym(3)},
+    // 4 months ago
+    {name:'Electricity Bill',      category:'Utilities',     amount:9400,  month:ym(4)},
+    {name:'Office Rent',           category:'Rent',          amount:25000, month:ym(4)},
+    {name:'Google Workspace',      category:'Subscriptions', amount:2800,  month:ym(4)},
+    // 5 months ago
+    {name:'Electricity Bill',      category:'Utilities',     amount:7600,  month:ym(5)},
+    {name:'Office Rent',           category:'Rent',          amount:25000, month:ym(5)},
+    {name:'Slack + Notion',        category:'Subscriptions', amount:3300,  month:ym(5)},
+  ];
+  common.forEach(c => DataStore.addCommon(c));
 }
