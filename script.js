@@ -522,6 +522,16 @@ function renderChart() {
   const empty  = document.getElementById('chartEmpty');
   if (!canvas) return;
 
+  // Chart.js loads from a CDN. If it's blocked (slow network, an ad-blocker,
+  // a firewall, etc.) `Chart` will be undefined and `new Chart(...)` below
+  // would throw — which previously broke the rest of renderAll() (including
+  // the month-picker's own re-render) on every click. Bail out safely instead.
+  if (typeof Chart === 'undefined') {
+    console.warn('[FinanceFlow] Chart.js failed to load — skipping chart render.');
+    empty?.classList.remove('hidden');
+    return;
+  }
+
   const range = getPeriodRange();
   const allTx = DataStore.getAll().filter(t => inRange(t.date, range));
   const allCom= DataStore.getCommon().filter(c => inRange(c.month+'-01', range));
@@ -682,7 +692,11 @@ function renderChart() {
   };
 
   if (chartInst) { chartInst.destroy(); chartInst = null; }
-  chartInst = new Chart(canvas, cfg);
+  try {
+    chartInst = new Chart(canvas, cfg);
+  } catch (err) {
+    console.error('[FinanceFlow] Failed to render chart:', err);
+  }
 }
 
 
