@@ -170,6 +170,18 @@
               <label>Direct Expense for Client (₹)</label>
               <input type="number" id="expenseAmount" placeholder="e.g. 30000" min="0"/>
             </div>
+            <div class="form-group">
+              <label>Expense Type</label>
+              <select id="expenseCategory">
+                <option value="Material">Material / Supplies</option>
+                <option value="Subcontractor">Subcontractor / Freelancer</option>
+                <option value="Software">Software / Tools</option>
+                <option value="Travel">Travel / Transport</option>
+                <option value="Printing">Printing / Stationery</option>
+                <option value="Logistics">Logistics / Shipping</option>
+                <option value="Other" selected>Other</option>
+              </select>
+            </div>
           </div>
           <button class="btn-primary full-width" id="addPaymentBtn">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -359,6 +371,7 @@
                 <th>Project</th>
                 <th>Revenue (₹)</th>
                 <th>Direct Exp (₹)</th>
+                <th>Expense Type</th>
                 <th>Common Share (₹)</th>
                 <th>Net P/L</th>
                 <th>Date</th>
