@@ -224,24 +224,44 @@
 
       <!-- 3. GLOBAL PERIOD FILTER BAR -->
       <section class="card filter-bar">
-        <div class="filter-bar-left">
-          <span class="filter-label">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
-            View Period:
-          </span>
-          <div class="period-tabs">
-            <button class="period-btn active" data-period="month">This Month</button>
-            <button class="period-btn" data-period="3months">Last 3 Months</button>
-            <button class="period-btn" data-period="year">This Year</button>
-            <button class="period-btn" data-period="all">All Time</button>
+        <div class="filter-row">
+
+          <!-- Period selector -->
+          <div class="filter-group">
+            <span class="filter-group-label">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+              View Period
+            </span>
+            <div class="period-tabs">
+              <button class="period-btn" data-period="month">This Month</button>
+              <button class="period-btn" data-period="3months">Last 3 Months</button>
+              <button class="period-btn" data-period="year">This Year</button>
+              <button class="period-btn active" data-period="all">All Time</button>
+            </div>
           </div>
-        </div>
-        <div class="filter-bar-right">
-          <span class="filter-label">Client:</span>
-          <select id="clientFilter" class="client-select">
-            <option value="all">All Clients (Overall)</option>
-            <!-- populated by JS -->
-          </select>
+
+          <div class="filter-divider"></div>
+
+          <!-- Client selector -->
+          <div class="filter-group">
+            <span class="filter-group-label">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+              </svg>
+              Client View
+            </span>
+            <select id="clientFilter" class="client-select">
+              <option value="all">All Clients (Overall)</option>
+              <!-- populated by JS -->
+            </select>
+          </div>
+
         </div>
       </section>
 
