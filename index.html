@@ -242,6 +242,27 @@
               <button class="period-btn" data-period="3months">Last 3 Months</button>
               <button class="period-btn" data-period="year">This Year</button>
               <button class="period-btn active" data-period="all">All Time</button>
+              <button class="period-btn pick-month-btn" id="pickMonthBtn" data-period="custom">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <span id="pickMonthLabel">Pick Month</span>
+              </button>
+            </div>
+
+            <!-- Month Picker Popup -->
+            <div class="month-picker-popup" id="monthPickerPopup">
+              <div class="mp-header">
+                <button class="mp-nav" id="mpPrevYear">&#8249;</button>
+                <span class="mp-year" id="mpYear">2025</span>
+                <button class="mp-nav" id="mpNextYear">&#8250;</button>
+              </div>
+              <div class="mp-grid" id="mpGrid">
+                <!-- 12 month buttons injected by JS -->
+              </div>
             </div>
           </div>
 
