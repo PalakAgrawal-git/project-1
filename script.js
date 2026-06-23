@@ -756,18 +756,29 @@ function renderChart() {
 
   let labels, revData, dirExpData, comExpData, netData;
 
-  // When a single month is picked, show a day-by-day breakdown instead of
-  // one flat bar/point for the whole month — much more useful for seeing
-  // exactly which days had activity.
-  const isDailyView = State.period === 'custom' && !!State.customMonth;
-  setText('chartSubtitle', isDailyView ? `· Day-by-day for ${monthLabel(State.customMonth)}` : '');
+  // When viewing a single month — whether via the "This Month" quick-filter
+  // or by picking a specific month from the calendar — show a day-by-day
+  // breakdown instead of one flat point for the whole month.
+  const isDailyView = State.period === 'month' || (State.period === 'custom' && !!State.customMonth);
+
+  let dailyYM, daysToShow;
+  if (isDailyView) {
+    if (State.period === 'custom') {
+      dailyYM = State.customMonth;
+      const [y, m] = dailyYM.split('-').map(Number);
+      daysToShow = new Date(y, m, 0).getDate();      // full month — it's a past/specific month
+    } else {
+      const now = new Date();
+      dailyYM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+      daysToShow = now.getDate();                      // month-to-date — no point plotting future days
+    }
+  }
+  setText('chartSubtitle', isDailyView ? `· Day-by-day for ${monthLabel(dailyYM)}` : '');
 
   if (isDailyView) {
-    const [y, m]    = State.customMonth.split('-').map(Number);
-    const daysInMonth = new Date(y, m, 0).getDate();
     const totalCommon = allCom.reduce((s,c)=>s+c.amount, 0);
     const commonForView = State.clientFilter === 'all' ? totalCommon : totalCommon / activeClients;
-    const commonPerDay  = commonForView / daysInMonth;   // common costs aren't logged per-day, so spread evenly across the month
+    const commonPerDay  = commonForView / daysToShow;   // common costs aren't logged per-day, so spread evenly across the days shown
 
     labels    = [];
     revData   = [];
@@ -775,8 +786,8 @@ function renderChart() {
     comExpData= [];
     netData   = [];
 
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dayKey = `${State.customMonth}-${String(d).padStart(2,'0')}`;
+    for (let d = 1; d <= daysToShow; d++) {
+      const dayKey = `${dailyYM}-${String(d).padStart(2,'0')}`;
       labels.push(String(d));
 
       const dayTx  = allTx.filter(t => t.date === dayKey);
@@ -831,60 +842,49 @@ function renderChart() {
     labels = months.map(m => monthLabel(m));
   }
 
+  // Bars suit the daily view — most days are legitimately ₹0 (no
+  // transaction that day), and a flat line at zero blends into the axis,
+  // making it look like data only "appears" on a few random dates. Bars
+  // simply don't draw anything for zero, which is the clearer picture.
+  function lineSeries(label, data, color, bg, opts = {}) {
+    return {
+      label, data,
+      borderColor: color,
+      backgroundColor: bg,
+      tension: 0.4, fill: true, spanGaps: true,
+      pointBackgroundColor: '#fff',
+      pointBorderColor: color,
+      pointBorderWidth: opts.thin ? 2 : 2.5,
+      pointRadius: opts.thin ? 5 : 6,
+      pointHoverRadius: opts.thin ? 8 : 9,
+      borderWidth: opts.thin ? 2 : 3,
+      ...(opts.dashed ? { borderDash: [6,3] } : {}),
+    };
+  }
+  function barSeries(label, data, color) {
+    return {
+      label, data,
+      backgroundColor: color,
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 18,
+    };
+  }
+
   const cfg = {
-    type: 'line',
+    type: isDailyView ? 'bar' : 'line',
     data: {
       labels,
-      datasets: [
-        {
-          label: 'Revenue',
-          data: revData,
-          borderColor: '#6366F1',
-          backgroundColor: 'rgba(99,102,241,0.08)',
-          tension: 0.4, fill: true, spanGaps: true,
-          pointBackgroundColor: '#fff',
-          pointBorderColor: '#6366F1',
-          pointBorderWidth: 2.5,
-          pointRadius: 6, pointHoverRadius: 9,
-          borderWidth: 3,
-        },
-        {
-          label: 'Direct Expense',
-          data: dirExpData,
-          borderColor: '#F59E0B',
-          backgroundColor: 'rgba(245,158,11,0.06)',
-          tension: 0.4, fill: true, spanGaps: true,
-          pointBackgroundColor: '#fff',
-          pointBorderColor: '#F59E0B',
-          pointBorderWidth: 2.5,
-          pointRadius: 6, pointHoverRadius: 9,
-          borderWidth: 2.5,
-        },
-        {
-          label: 'Common Expense',
-          data: comExpData,
-          borderColor: '#8B5CF6',
-          backgroundColor: 'rgba(139,92,246,0.05)',
-          tension: 0.4, fill: true, spanGaps: true,
-          pointBackgroundColor: '#fff',
-          pointBorderColor: '#8B5CF6',
-          pointBorderWidth: 2,
-          pointRadius: 5, pointHoverRadius: 8,
-          borderWidth: 2,
-          borderDash: [6, 3],
-        },
-        {
-          label: 'Net Profit',
-          data: netData,
-          borderColor: '#10B981',
-          backgroundColor: 'rgba(16,185,129,0.08)',
-          tension: 0.4, fill: true, spanGaps: true,
-          pointBackgroundColor: '#fff',
-          pointBorderColor: '#10B981',
-          pointBorderWidth: 2.5,
-          pointRadius: 6, pointHoverRadius: 9,
-          borderWidth: 3,
-        },
+      datasets: isDailyView ? [
+        barSeries('Revenue', revData, '#6366F1'),
+        barSeries('Direct Expense', dirExpData, '#F59E0B'),
+        barSeries('Common Expense', comExpData, '#8B5CF6'),
+        barSeries('Net Profit', netData, '#10B981'),
+      ] : [
+        lineSeries('Revenue', revData, '#6366F1', 'rgba(99,102,241,0.08)'),
+        lineSeries('Direct Expense', dirExpData, '#F59E0B', 'rgba(245,158,11,0.06)'),
+        lineSeries('Common Expense', comExpData, '#8B5CF6', 'rgba(139,92,246,0.05)', { thin: true, dashed: true }),
+        lineSeries('Net Profit', netData, '#10B981', 'rgba(16,185,129,0.08)'),
       ],
     },
     options: {
