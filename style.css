@@ -101,6 +101,7 @@ a { text-decoration: none; color: inherit; }
 .form-section { padding: 1.35rem; }
 .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
 .section-title { display: flex; align-items: center; gap: 0.45rem; font-size: 0.9rem; font-weight: 700; }
+.chart-subtitle { font-size: 0.72rem; font-weight: 600; color: var(--col-text-muted); margin-left: 0.25rem; }
 .section-badge { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; background: rgba(99,102,241,0.1); color: var(--col-revenue); padding: 0.22rem 0.6rem; border-radius: 99px; }
 .orange-badge { background: rgba(245,158,11,0.1); color: var(--col-expense); }
 
