@@ -749,47 +749,87 @@ function renderChart() {
   }
   empty?.classList.add('hidden');
 
-  // Build per-month buckets
-  const monthSet = new Set([
-    ...allTx.map(t => bucket(t.date)),
-    ...allExp.map(e => bucket(e.date)),
-    ...allCom.map(c => c.month),
-  ]);
-  const months = [...monthSet].sort();
-
   const activeClients = new Set([
     ...allTx.map(t=>t.client.toLowerCase()),
     ...allExp.map(e=>e.client.toLowerCase()),
   ]).size || 1;
 
-  const revData    = [];
-  const dirExpData = [];
-  const comExpData = [];
-  const netData    = [];
+  let labels, revData, dirExpData, comExpData, netData;
 
-  months.forEach(mo => {
-    const moTx  = allTx.filter(t => bucket(t.date) === mo);
-    const moExp = allExp.filter(e => bucket(e.date) === mo);
-    const moCom = allCom.filter(c => c.month === mo);
+  // When a single month is picked, show a day-by-day breakdown instead of
+  // one flat bar/point for the whole month — much more useful for seeing
+  // exactly which days had activity.
+  const isDailyView = State.period === 'custom' && !!State.customMonth;
+  setText('chartSubtitle', isDailyView ? `· Day-by-day for ${monthLabel(State.customMonth)}` : '');
 
-    // Apply client filter
-    const filtTx  = State.clientFilter === 'all' ? moTx  : moTx.filter(t => t.client.toLowerCase() === State.clientFilter);
-    const filtExp = State.clientFilter === 'all' ? moExp : moExp.filter(e => e.client.toLowerCase() === State.clientFilter);
+  if (isDailyView) {
+    const [y, m]    = State.customMonth.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const totalCommon = allCom.reduce((s,c)=>s+c.amount, 0);
+    const commonForView = State.clientFilter === 'all' ? totalCommon : totalCommon / activeClients;
+    const commonPerDay  = commonForView / daysInMonth;   // common costs aren't logged per-day, so spread evenly across the month
 
-    const rev    = filtTx.reduce((s,t)=>s+t.payment, 0);
-    const dirExp = filtExp.reduce((s,e)=>s+(+e.amount||0), 0);
-    const moComTotal = moCom.reduce((s,c)=>s+c.amount, 0);
-    const comShare   = State.clientFilter === 'all'
-      ? moComTotal
-      : moComTotal / activeClients;
+    labels    = [];
+    revData   = [];
+    dirExpData= [];
+    comExpData= [];
+    netData   = [];
 
-    revData.push(rev);
-    dirExpData.push(dirExp);
-    comExpData.push(Math.round(comShare));
-    netData.push(Math.round(rev - dirExp - comShare));
-  });
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dayKey = `${State.customMonth}-${String(d).padStart(2,'0')}`;
+      labels.push(String(d));
 
-  const labels = months.map(m => monthLabel(m));
+      const dayTx  = allTx.filter(t => t.date === dayKey);
+      const dayExp = allExp.filter(e => e.date === dayKey);
+      const filtTx  = State.clientFilter === 'all' ? dayTx  : dayTx.filter(t => t.client.toLowerCase() === State.clientFilter);
+      const filtExp = State.clientFilter === 'all' ? dayExp : dayExp.filter(e => e.client.toLowerCase() === State.clientFilter);
+
+      const rev    = filtTx.reduce((s,t)=>s+t.payment, 0);
+      const dirExp = filtExp.reduce((s,e)=>s+(+e.amount||0), 0);
+
+      revData.push(rev);
+      dirExpData.push(dirExp);
+      comExpData.push(Math.round(commonPerDay));
+      netData.push(Math.round(rev - dirExp - commonPerDay));
+    }
+  } else {
+    // Build per-month buckets
+    const monthSet = new Set([
+      ...allTx.map(t => bucket(t.date)),
+      ...allExp.map(e => bucket(e.date)),
+      ...allCom.map(c => c.month),
+    ]);
+    const months = [...monthSet].sort();
+
+    revData    = [];
+    dirExpData = [];
+    comExpData = [];
+    netData    = [];
+
+    months.forEach(mo => {
+      const moTx  = allTx.filter(t => bucket(t.date) === mo);
+      const moExp = allExp.filter(e => bucket(e.date) === mo);
+      const moCom = allCom.filter(c => c.month === mo);
+
+      // Apply client filter
+      const filtTx  = State.clientFilter === 'all' ? moTx  : moTx.filter(t => t.client.toLowerCase() === State.clientFilter);
+      const filtExp = State.clientFilter === 'all' ? moExp : moExp.filter(e => e.client.toLowerCase() === State.clientFilter);
+
+      const rev    = filtTx.reduce((s,t)=>s+t.payment, 0);
+      const dirExp = filtExp.reduce((s,e)=>s+(+e.amount||0), 0);
+      const moComTotal = moCom.reduce((s,c)=>s+c.amount, 0);
+      const comShare   = State.clientFilter === 'all'
+        ? moComTotal
+        : moComTotal / activeClients;
+
+      revData.push(rev);
+      dirExpData.push(dirExp);
+      comExpData.push(Math.round(comShare));
+      netData.push(Math.round(rev - dirExp - comShare));
+    });
+
+    labels = months.map(m => monthLabel(m));
+  }
 
   const cfg = {
     type: 'line',
