@@ -861,26 +861,12 @@ function renderChart() {
       ...(opts.dashed ? { borderDash: [6,3] } : {}),
     };
   }
-  function barSeries(label, data, color) {
-    return {
-      label, data,
-      backgroundColor: color,
-      borderRadius: 4,
-      borderSkipped: false,
-      maxBarThickness: 18,
-    };
-  }
 
   const cfg = {
-    type: isDailyView ? 'bar' : 'line',
+    type: 'line',
     data: {
       labels,
-      datasets: isDailyView ? [
-        barSeries('Revenue', revData, '#6366F1'),
-        barSeries('Direct Expense', dirExpData, '#F59E0B'),
-        barSeries('Common Expense', comExpData, '#8B5CF6'),
-        barSeries('Net Profit', netData, '#10B981'),
-      ] : [
+      datasets: [
         lineSeries('Revenue', revData, '#6366F1', 'rgba(99,102,241,0.08)'),
         lineSeries('Direct Expense', dirExpData, '#F59E0B', 'rgba(245,158,11,0.06)'),
         lineSeries('Common Expense', comExpData, '#8B5CF6', 'rgba(139,92,246,0.05)', { thin: true, dashed: true }),
