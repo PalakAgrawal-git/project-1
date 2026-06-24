@@ -842,16 +842,21 @@ function renderChart() {
     labels = months.map(m => monthLabel(m));
   }
 
-  // Bars suit the daily view — most days are legitimately ₹0 (no
-  // transaction that day), and a flat line at zero blends into the axis,
-  // making it look like data only "appears" on a few random dates. Bars
-  // simply don't draw anything for zero, which is the clearer picture.
+  // Bars suit dense data, but for the daily view we kept a line per the
+  // user's preference. With fill:true, a sharp 0→high→0 spike across just
+  // 1-2 days renders as a solid filled block — visually indistinguishable
+  // from a bar even though it's structurally a line. Turning fill off (and
+  // using straight segments instead of curved ones) keeps it a clean,
+  // unmistakable line for the daily view, while the monthly trend keeps
+  // its smoother filled look since that data isn't as spiky.
   function lineSeries(label, data, color, bg, opts = {}) {
     return {
       label, data,
       borderColor: color,
       backgroundColor: bg,
-      tension: 0.4, fill: true, spanGaps: true,
+      tension: opts.straight ? 0 : 0.4,
+      fill: opts.noFill ? false : true,
+      spanGaps: true,
       pointBackgroundColor: '#fff',
       pointBorderColor: color,
       pointBorderWidth: opts.thin ? 2 : 2.5,
@@ -862,15 +867,17 @@ function renderChart() {
     };
   }
 
+  const dailyOpts = isDailyView ? { noFill: true, straight: true } : {};
+
   const cfg = {
     type: 'line',
     data: {
       labels,
       datasets: [
-        lineSeries('Revenue', revData, '#6366F1', 'rgba(99,102,241,0.08)'),
-        lineSeries('Direct Expense', dirExpData, '#F59E0B', 'rgba(245,158,11,0.06)'),
-        lineSeries('Common Expense', comExpData, '#8B5CF6', 'rgba(139,92,246,0.05)', { thin: true, dashed: true }),
-        lineSeries('Net Profit', netData, '#10B981', 'rgba(16,185,129,0.08)'),
+        lineSeries('Revenue', revData, '#6366F1', 'rgba(99,102,241,0.08)', { ...dailyOpts }),
+        lineSeries('Direct Expense', dirExpData, '#F59E0B', 'rgba(245,158,11,0.06)', { ...dailyOpts }),
+        lineSeries('Common Expense', comExpData, '#8B5CF6', 'rgba(139,92,246,0.05)', { thin: true, dashed: true, ...dailyOpts }),
+        lineSeries('Net Profit', netData, '#10B981', 'rgba(16,185,129,0.08)', { ...dailyOpts }),
       ],
     },
     options: {
